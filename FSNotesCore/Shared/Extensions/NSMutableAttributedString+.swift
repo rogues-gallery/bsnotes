@@ -31,26 +31,25 @@ extension NSMutableAttributedString {
 
                 if let filePath = self.attribute(filePathKey, at: range.location, effectiveRange: nil) as? String {
 
-                    path = filePath
+                    path = filePath.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)
                     title = self.attribute(titleKey, at: range.location, effectiveRange: nil) as? String
                 } else if let note = note,
-                    let imageData = textAttachment.fileWrapper?.regularFileContents,
-                    let fileName = ImagesProcessor.writeImage(data: imageData, note: note) {
-
-                    path = note.getMdImagePath(name: fileName)
+                    let imageData = textAttachment.fileWrapper?.regularFileContents {
+                    path = ImagesProcessor.writeFile(data: imageData, note: note)
+                } else if let note = note,
+                    let imageData = textAttachment.contents {
+                    path = ImagesProcessor.writeFile(data: imageData, note: note)
                 }
 
                 let newRange = NSRange(location: range.location + offset, length: range.length)
 
                 guard let unwrappedPath = path, unwrappedPath.count > 0 else { return }
+
                 let unrappedTitle = title ?? ""
 
-                if let pathEncoded = unwrappedPath.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
-
-                    content?.removeAttribute(.attachment, range: newRange)
-                    content?.replaceCharacters(in: newRange, with: "![\(unrappedTitle)](\(pathEncoded))")
-                    offset += 4 + pathEncoded.count + unrappedTitle.count
-                }
+                content?.removeAttribute(.attachment, range: newRange)
+                content?.replaceCharacters(in: newRange, with: "![\(unrappedTitle)](\(unwrappedPath))")
+                offset += 4 + unwrappedPath.count + unrappedTitle.count
             }
         }
 
@@ -81,6 +80,30 @@ extension NSMutableAttributedString {
         return content!
     }
 
+    public func unLoad() -> NSMutableAttributedString {
+        return unLoadCheckboxes().unLoadImages()
+    }
+
+    #if os(OSX)
+    public func unLoadUnderlines() -> NSMutableAttributedString {
+        self.enumerateAttribute(.underlineStyle, in: NSRange(location: 0, length: self.length)) { (value, range, _) in
+            if value != nil {
+                self.addAttribute(.underlineColor, value: NSColor.black, range: range)
+            }
+        }
+
+        return self
+    }
+    #endif
+
+    public func loadUnderlines() {
+        self.enumerateAttribute(.underlineStyle, in: NSRange(location: 0, length: self.length)) { (value, range, _) in
+            if value != nil {
+                self.addAttribute(.underlineColor, value: NotesTextProcessor.underlineColor, range: range)
+            }
+        }
+    }
+
     #if os(OSX)
     public func loadCheckboxes() {
         while mutableString.contains("- [ ] ") {
@@ -105,26 +128,32 @@ extension NSMutableAttributedString {
     }
     #endif
 
-    public func updateParagraph() {
-        beginEditing()
-
-        let paragraph = NSMutableParagraphStyle()
-        paragraph.lineSpacing = CGFloat(UserDefaultsManagement.editorLineSpacing)
-
-        let attachmentParagraph = NSMutableParagraphStyle()
-        attachmentParagraph.lineSpacing = CGFloat(UserDefaultsManagement.editorLineSpacing)
-        attachmentParagraph.alignment = .center
-
-        addAttribute(.paragraphStyle, value: paragraph, range: NSRange(0..<length))
-
-        enumerateAttribute(.attachment, in: NSRange(location: 0, length: self.length)) { (value, range, _) in
-
-            if value as? NSTextAttachment != nil,
-                self.attribute(.todo, at: range.location, effectiveRange: nil) == nil {
-                addAttribute(.paragraphStyle, value: attachmentParagraph, range: range)
+    public func replaceCheckboxes() {
+        #if NOT_EXTENSION || os(OSX)
+        while mutableString.contains("- [ ] ") {
+            let range = mutableString.range(of: "- [ ] ")
+            if length >= range.upperBound, let unChecked = AttributedBox.getUnChecked() {
+                replaceCharacters(in: range, with: unChecked)
             }
         }
 
-        endEditing()
+        while mutableString.contains("- [x] ") {
+            let range = mutableString.range(of: "- [x] ")
+            if length >= range.upperBound, let checked = AttributedBox.getChecked() {
+                replaceCharacters(in: range, with: checked)
+            }
+        }
+        #endif
+    }
+
+    public func replace(string: String, with attributedString: NSAttributedString? = nil) {
+        let content = attributedString ?? NSAttributedString()
+
+        while mutableString.contains(string) {
+            let range = mutableString.range(of: string)
+            if length >= range.upperBound {
+                replaceCharacters(in: range, with: content)
+            }
+        }
     }
 }

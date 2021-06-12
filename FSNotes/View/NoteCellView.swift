@@ -15,6 +15,7 @@ class NoteCellView: NSTableCellView {
     @IBOutlet var date: NSTextField!
     @IBOutlet var pin: NSImageView!
     
+    @IBOutlet weak var titleConstraint: NSLayoutConstraint!
     @IBOutlet weak var imagePreview: NSImageView!
     @IBOutlet weak var imagePreviewSecond: NSImageView!
     @IBOutlet weak var imagePreviewThird: NSImageView!
@@ -45,8 +46,23 @@ class NoteCellView: NSTableCellView {
     
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
-        
+
         renderPin()
+        name.layer?.zPosition = 1000
+
+        if let descriptor = date.font?.fontDescriptor {
+            date.font = NSFont.init(descriptor: descriptor, size: 11)
+        }
+
+        date.layer?.backgroundColor = UserDataService.instance.isDark
+            ? NSColor(red: 0.16, green: 0.17, blue: 0.18, alpha: 1.00).cgColor
+            : NSColor(red: 0.98, green: 0.98, blue: 0.98, alpha: 1.00).cgColor
+
+        date.layer?.cornerRadius = 5
+        date.layer?.zPosition = 1001
+        date.textColor = UserDataService.instance.isDark ? NSColor.white : NSColor.gray
+        date.isHidden = UserDefaultsManagement.hideDate
+        titleConstraint.constant = UserDefaultsManagement.hideDate ? 0 : 5
 
         if (UserDefaultsManagement.horizontalOrientation) {
             preview.isHidden = true
@@ -64,7 +80,10 @@ class NoteCellView: NSTableCellView {
 
         var margin = 0
         if !UserDefaultsManagement.horizontalOrientation && !UserDefaultsManagement.hidePreviewImages{
-            margin = self.note?.getImagePreviewUrl()?.count ?? 0 > 0 ? 58 : 0
+
+            self.note?.loadPreviewInfo()
+
+            margin = self.note?.imageUrl?.count ?? 0 > 0 ? 58 : 0
         }
         
         pin.frame.origin.y = CGFloat(-4) + CGFloat(UserDefaultsManagement.cellSpacing) + CGFloat(margin)
@@ -181,8 +200,15 @@ class NoteCellView: NSTableCellView {
             applyPreviewStyle(NSColor.white)
             date.textColor = NSColor.white
             name.textColor = NSColor.white
+
+            date.layer?.backgroundColor = NSColor(red: 0.36, green: 0.67, blue: 0.92, alpha: 1.00).cgColor
+
         } else {
             applyPreviewStyle(labelColor)
+            date.layer?.backgroundColor = UserDataService.instance.isDark
+                ? NSColor(red: 0.16, green: 0.17, blue: 0.18, alpha: 1.00).cgColor
+                : NSColor(red: 0.92, green: 0.94, blue: 0.92, alpha: 1.00).cgColor
+
             date.textColor = labelColor
 
             if self.name.stringValue == "Untitled Note" {
@@ -222,17 +248,34 @@ class NoteCellView: NSTableCellView {
     }
 
     public func getPreviewImage(imageUrl: URL, note: Note) -> Image? {
-        if let image = getPreviewImage(url: imageUrl) {
-            return image
-        } else {
-            guard let image =
-                ImageAttachment.getImageAndCacheData(url: imageUrl, note: note)
-                else { return nil }
+        let tempURL = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("MainNotesList")
 
-            let size = CGSize(width: 70, height: 70)
-            if let resized = image.crop(to: size) {
-                savePreviewImage(url: imageUrl, image: resized)
-                return resized
+        if !FileManager.default.fileExists(atPath: tempURL.path) {
+            try? FileManager.default.createDirectory(at: tempURL, withIntermediateDirectories: false, attributes: nil)
+        }
+
+        if let cacheName = imageUrl.absoluteString.addingPercentEncoding(withAllowedCharacters: .urlHostAllowed)?.md5 {
+
+            let file = tempURL.appendingPathComponent(cacheName)
+            if FileManager.default.fileExists(atPath: file.path) {
+                if let data = try? Data(contentsOf: file), let image = NSImage(data: data) {
+                    return image
+                }
+            }
+
+            do {
+                let data = try Data(contentsOf: imageUrl)
+                if let image = NSImage(data: data) {
+                    let size = CGSize(width: 70, height: 70)
+
+                    if let resized = image.crop(to: size) {
+                        let jpegImageData = resized.jpgData
+                        try? jpegImageData?.write(to: file, options: .atomic)
+                        return resized
+                    }
+                }
+            } catch {
+                print(error.localizedDescription)
             }
         }
 
@@ -257,57 +300,20 @@ class NoteCellView: NSTableCellView {
         for constraint in self.constraints {
             if constraint.secondAttribute == .top, let item = constraint.firstItem {
                 if let firstItem = item as? NSImageView, firstItem.identifier?.rawValue == "pin" {
-                    constraint.constant = margin - 1
+                    constraint.constant = margin
                     continue
                 }
 
                 if item.isKind(of: NameTextField.self) {
-                    constraint.constant = margin
+                    constraint.constant = margin + 1.5
                     continue
                 }
 
                 if let item = item as? NSTextField, item.identifier?.rawValue == "cellDate" {
-                    constraint.constant = margin
+                    constraint.constant = margin + 3.5
                 }
             }
         }
-    }
-
-    private func getCacheUrl(from url: URL) -> URL? {
-        var temporary = URL(fileURLWithPath: NSTemporaryDirectory())
-        temporary.appendPathComponent("Preview")
-
-        if let filePath = url.absoluteString.addingPercentEncoding(withAllowedCharacters: .urlHostAllowed) {
-
-            return temporary.appendingPathComponent(filePath)
-        }
-
-        return nil
-    }
-
-    private func savePreviewImage(url: URL, image: Image) {
-        var temporary = URL(fileURLWithPath: NSTemporaryDirectory())
-        temporary.appendPathComponent("Preview")
-
-        if !FileManager.default.fileExists(atPath: temporary.path) {
-            try? FileManager.default.createDirectory(at: temporary, withIntermediateDirectories: false, attributes: nil)
-        }
-
-        if let url = getCacheUrl(from: url) {
-            if let data = image.jpgData {
-                try? data.write(to: url)
-            }
-        }
-    }
-
-    private func getPreviewImage(url: URL) -> Image? {
-        if let url = getCacheUrl(from: url) {
-            if let data = try? Data(contentsOf: url) {
-                return Image(data: data)
-            }
-        }
-
-        return nil
     }
 
     public func fixTopConstraint(position: Int?, note: Note) {

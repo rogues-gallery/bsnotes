@@ -22,7 +22,8 @@ html {
     -webkit-text-size-adjust: 115%
 }
 body {
-    margin: 0
+    margin: 0;
+    max-width: 100%;
 }
 article,
 aside,
@@ -231,7 +232,7 @@ body {
     font-size: 0.9em;
     line-height: 1.2;
     word-wrap: break-word;
-    padding: 0.7rem
+    padding: 15px 0;
 }
 a {
     background-color: transparent;
@@ -253,10 +254,14 @@ img {
     background: none;
     border-radius: 3px;
     border-style: none;
-    max-width: 100%
+    width: auto;
+    height: auto;
+    max-width: 100%;
+    max-height: 90vh;
 }
 canvas {
     border-radius: 3px;
+    max-width: 100%;
 }
 h1,
 h2 {
@@ -371,8 +376,9 @@ p,
 pre,
 table,
 ul {
+    line-height: 23px;
     margin-top: 0;
-    margin-bottom: 16px
+    margin-bottom: 16px;
 }
 hr {
     background: #e7e7e7;
@@ -417,11 +423,19 @@ table tr:nth-child(2n) {
 }
 code {
     padding: .2em 0;
+    line-height: 30px;
     margin: 0;
     font-size: 85%;
     background-color: rgba(0, 0, 0, .04);
-    border-radius: 3px
+    border: 1px solid rgba(0, 0, 0, .04);
+    border-radius: 3px;
+    transition: background 0.5s ease-out;
 }
+    code:hover {
+        border: 1px solid #9c9c9c;
+        cursor: pointer;
+    }
+
 pre code,
 pre>code {
     padding: 0;
@@ -444,7 +458,7 @@ pre code {
     max-width: initial;
     overflow: initial;
     line-height: inherit;
-    background-color: transparent
+    border: 1px solid rgba(0, 0, 0, .04);
 }
 pre code:after,
 pre code:before {
@@ -509,28 +523,54 @@ input[type='checkbox'] {
     height:20px;
     line-height: 14px;
     border-radius:5px;
+    background: white;
     border:1px solid #555;
     vertical-align: middle;
+    margin: 0 5px 0 0;
+    transform: scale(1.1);
 }
     input[type='checkbox'][disabled][checked]:after {
         content:'✓';
+        color: black;
         position: absolute;
         margin-left: 4px;
         margin-top: 3px;
-        opacity: 1 !important;
+        opacity: 1 !important;*/
         font-family: 'Arial';
         font-style: normal;
         font-weight: normal;
+        transform: scale(1.1);
+    }
+
+    input[type='checkbox'][checked]:after {
+        content:'✓';
+        color: black;
+        position: absolute;
+        margin-left: 4px;
+        margin-top: 3px;
+        opacity: 1 !important;*/
+        font-family: 'Arial';
+        font-style: normal;
+        font-weight: normal;
+        transform: scale(1.1);
     }
 
 li {
     list-style-position: inside;
-    line-height: 22px;
+    line-height: 28px;
 }
 
 ul li p {
     margin: 0;
     padding: 0;
+}
+
+ul li p {
+    display: inline;
+}
+
+.cb > .strike {
+    text-decoration: line-through;
 }
 
 canvas {

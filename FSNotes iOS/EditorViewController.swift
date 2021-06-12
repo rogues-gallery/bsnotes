@@ -8,14 +8,14 @@
 
 import UIKit
 import NightNight
-import Down
 import AudioToolbox
 import DKImagePickerController
 import MobileCoreServices
 import Photos
-import GSImageViewerController
+import DropDown
+import CoreSpotlight
 
-class EditorViewController: UIViewController, UITextViewDelegate {
+class EditorViewController: UIViewController, UITextViewDelegate, UIDocumentPickerDelegate {
     public var note: Note?
     
     private var isHighlighted: Bool = false
@@ -31,7 +31,16 @@ class EditorViewController: UIViewController, UITextViewDelegate {
     @IBOutlet weak var editArea: EditTextView!
 
     var rowUpdaterTimer = Timer()
-    
+
+    public var tagsTimer: Timer?
+    private let dropDown = DropDown()
+    public var isUndoAction: Bool = false
+
+    private var isLandscape: Bool?
+
+    // used for non icloud changes detection
+    private var coreNote: CoreNote?
+
     override func viewDidLoad() {
         storageQueue.maxConcurrentOperationCount = 1
         
@@ -40,62 +49,73 @@ class EditorViewController: UIViewController, UITextViewDelegate {
         navigationController?.navigationBar.mixedBarTintColor = Colors.Header
         navigationController?.navigationBar.mixedBackgroundColor = Colors.Header
 
-        self.navigationItem.rightBarButtonItem = self.getShareButton()
+        self.navigationItem.rightBarButtonItems = [getMoreButton(), self.getPreviewButton()]
         self.navigationItem.leftBarButtonItem = Buttons.getBack(target: self, selector: #selector(cancel))
 
+        let imageTap = SingleImageTouchDownGestureRecognizer(target: self, action: #selector(imageTapHandler(_:)))
+        editArea.addGestureRecognizer(imageTap)
+
         let tap = SingleTouchDownGestureRecognizer(target: self, action: #selector(tapHandler(_:)))
-        self.editArea.addGestureRecognizer(tap)
+        editArea.addGestureRecognizer(tap)
+        editArea.textStorage.delegate = editArea.textStorage
 
-        let up = UISwipeGestureRecognizer(target: self, action: #selector(tapUp(_:)))
-        up.direction = .up
-
-        self.editArea.addGestureRecognizer(up)
-
-        self.editArea.textStorage.delegate = self.editArea.textStorage
-
-        EditTextView.imagesLoaderQueue.maxConcurrentOperationCount = 2
+        EditTextView.imagesLoaderQueue.maxConcurrentOperationCount = 1
         EditTextView.imagesLoaderQueue.qualityOfService = .userInteractive
 
         super.viewDidLoad()
 
         self.addToolBar(textField: editArea, toolbar: self.getMarkdownToolbar())
 
-        guard let pageController = self.parent as? PageViewController else {
+        NotificationCenter.default.addObserver(self, selector: #selector(preferredContentSizeChanged), name: UIContentSizeCategory.didChangeNotification, object: nil)
+
+        NotificationCenter.default.addObserver(self, selector: #selector(rotated), name: UIDevice.orientationDidChangeNotification, object: nil)
+
+        NotificationCenter.default.addObserver(self, selector: #selector(refill), name: NSNotification.Name(rawValue: "es.fsnot.external.file.changed"), object: nil)
+
+        editArea.keyboardDismissMode = .interactive
+    }
+
+    @objc func rotated() {
+        guard isLandscape != nil else {
+            isLandscape = UIDevice.current.orientation.isLandscape
+            navigationController?.isNavigationBarHidden = isLandscape!
             return
         }
-        
-        pageController.enableSwipe()
-        
-        NotificationCenter.default.addObserver(self, selector: #selector(preferredContentSizeChanged), name: UIContentSizeCategory.didChangeNotification, object: nil)
+
+        let isLand = UIDevice.current.orientation.isLandscape
+        if let landscape = self.isLandscape, landscape != isLand, !UIDevice.current.orientation.isFlat {
+            isLandscape = isLand
+            navigationController?.isNavigationBarHidden = isLand
+        } else {
+            navigationController?.isNavigationBarHidden = false
+        }
     }
 
-    override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
-        super.viewWillTransition(to: size, with: coordinator)
-
-        coordinator.animate(alongsideTransition: { (ctx) in
-            self.refillToolbar()
-            self.refill()
-        })
-    }
+//    override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
+//        super.viewWillTransition(to: size, with: coordinator)
+//
+//        coordinator.animate(alongsideTransition: { (ctx) in
+//            self.refillToolbar()
+//            self.refill()
+//        })
+//    }
 
     override func viewDidAppear(_ animated: Bool) {
         editArea.isScrollEnabled = true
         
         if let n = note, n.isMarkdown() {
-            self.navigationItem.rightBarButtonItem?.title = "Preview"
+            self.navigationItem.rightBarButtonItem?.title = NSLocalizedString("Preview", comment: "")
         }
         
         super.viewDidAppear(animated)
 
         if editArea.textStorage.length == 0 {
-            editArea.perform(#selector(becomeFirstResponder), with: nil, afterDelay: 0.0)
+            editArea.perform(#selector(becomeFirstResponder), with: nil, afterDelay: 0)
         }
 
-        guard let pageController = UIApplication.shared.windows[0].rootViewController as? PageViewController else {
-            return
+        if let bvc = UIApplication.shared.windows[0].rootViewController as? BasicViewController {
+            bvc.enableSwipe()
         }
-
-        pageController.enableSwipe()
 
         if NightNight.theme == .night {
             editArea.keyboardAppearance = .dark
@@ -104,6 +124,9 @@ class EditorViewController: UIViewController, UITextViewDelegate {
         }
 
         initLinksColor()
+
+        editArea.indicatorStyle = (NightNight.theme == .night) ? .white : .black
+        editArea.flashScrollIndicators()
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -137,15 +160,11 @@ class EditorViewController: UIViewController, UITextViewDelegate {
     }
 
     public func getToolbar(for note: Note) -> UIToolbar {
-        if note.isMarkdown() {
-            return self.getMarkdownToolbar()
-        }
-
         if note.type == .RichText {
             return self.getRTFToolbar()
         }
 
-        return self.getPlainTextToolbar()
+        return self.getMarkdownToolbar()
     }
 
     public func refillToolbar() {
@@ -161,64 +180,96 @@ class EditorViewController: UIViewController, UITextViewDelegate {
         button.addTarget(self, action: #selector(self.clickOnButton), for: .touchUpInside)
         self.navigationItem.titleView = button
         self.navigationItem.title = text
+
+        UIApplication.getPVC()?.setTitle(text: text)
     }
 
-    public func fill(note: Note, preview: Bool = false) {
+    public func fill(note: Note, clearPreview: Bool = false, enableHandoff: Bool = true, completion: (() -> ())? = nil) {
+
+        if enableHandoff {
+            registerHandoff(for: note)
+        }
+
         self.note = note
-        EditTextView.note = note
+        if !note.isLoaded || note.project.isExternal {
+            note.load()
+        }
+
+        // for projects added from another app spaces
+        // changes detector
         
+//        if note.project.isExternal {
+//            if coreNote != nil {
+//                coreNote?.close()
+//            }
+//
+//            coreNote = CoreNote(note: note)
+//            coreNote?.open()
+//        } else {
+//            coreNote?.close()
+//            coreNote = nil
+//        }
+
+        EditTextView.note = note
+
         UserDefaultsManagement.codeTheme = NightNight.theme == .night ? "monokai-sublime" : "atom-one-light"
 
         setTitle(text: note.getShortTitle())
-        _ = view
 
+        if UserDefaultsManagement.previewMode {
+            self.fillPreview(note: note)
+
+            completion?()
+            return
+        }
+        
+        fillEditor(note: note)
+        completion?()
+
+        // prefill preview for parallax effect
+        if clearPreview {
+            guard let pvc = UIApplication.getPVC() else { return }
+            pvc.clear()
+        }
+    }
+
+    private func fillEditor(note: Note) {
         guard editArea != nil else { return }
-        
+
         editArea.initUndoRedoButons()
-        
+
         if note.isRTF() {
             view.backgroundColor = UIColor.white
             editArea.backgroundColor = UIColor.white
         } else {
-            view.mixedBackgroundColor = MixedColor(normal: 0xfafafa, night: 0x2e2c32)
-            editArea.mixedBackgroundColor = MixedColor(normal: 0xfafafa, night: 0x2e2c32)
+            view.mixedBackgroundColor = MixedColor(normal: 0xfafafa, night: 0x000000)
+            editArea.mixedBackgroundColor = MixedColor(normal: 0xfafafa, night: 0x000000)
         }
 
-        if note.type == .PlainText {
-            let foregroundColor = NightNight.theme == .night ? UIColor.white : UIColor.black
+        if note.isMarkdown() {
+            EditTextView.shouldForceRescan = true
 
-            editArea.attributedText = NSAttributedString(string: note.content.string, attributes: [
-                    .foregroundColor: foregroundColor,
-                    .font: UserDefaultsManagement.noteFont
-                ]
-            )
+            if let content = note.content.mutableCopy() as? NSMutableAttributedString {
+                content.replaceCheckboxes()
+
+                if UserDefaultsManagement.liveImagesPreview {
+                    content.loadImages(note: note)
+                }
+
+                editArea.attributedText = content
+            }
         } else {
             editArea.attributedText = note.content
         }
 
+
         self.configureToolbar()
 
         editArea.textStorage.updateFont()
-        
-        if note.isMarkdown() {
-            note.isCached = false
-            EditTextView.isBusyProcessing = true
-            editArea.textStorage.replaceCheckboxes()
-            EditTextView.isBusyProcessing = false
-        }
-        
         editArea.delegate = self
-        
+
         let cursor = editArea.selectedTextRange
         let storage = editArea.textStorage
-        let range = NSRange(0..<storage.length)
-
-        if UserDefaultsManagement.liveImagesPreview {
-            EditTextView.isBusyProcessing = true
-            let processor = ImagesProcessor(styleApplier: storage, range: range, note: note)
-            processor.load()
-            EditTextView.isBusyProcessing = false
-        }
 
         let search = getSearchText()
         if search.count > 0 {
@@ -226,7 +277,7 @@ class EditorViewController: UIViewController, UITextViewDelegate {
             processor.highlightKeyword(search: search)
             isHighlighted = true
         }
-        
+
         editArea.selectedTextRange = cursor
 
         if note.type != .RichText {
@@ -239,28 +290,23 @@ class EditorViewController: UIViewController, UITextViewDelegate {
         editArea.applyLeftParagraphStyle()
     }
 
-    @objc private func clickOnButton() {
-        guard
-            let pageController = UIApplication.shared.windows[0].rootViewController as? PageViewController,
-            let vc = pageController.orderedViewControllers[0] as? ViewController else {
-                return
-        }
+    private func fillPreview(note: Note) {
+        guard let pvc = UIApplication.getPVC() else { return }
 
-        guard let note = self.note else { return }
+        pvc.loadPreview(force: true)
+    }
+
+    @objc public func clickOnButton() {
+        guard let pc = UIApplication.shared.windows[0].rootViewController as? BasicViewController,
+            let vc = pc.containerController.viewControllers[0] as? ViewController,
+            let note = self.note
+        else { return }
 
         vc.notesTable.actionsSheet(notes: [note], showAll: true, presentController: self)
     }
 
     private func configureToolbar() {
         guard let note = self.note else { return }
-
-        if note.type == .PlainText {
-            if self.toolbar != .plain {
-                self.toolbar = .plain
-                self.addToolBar(textField: editArea, toolbar: self.getPlainTextToolbar())
-            }
-            return
-        }
 
         if note.type == .RichText {
             if self.toolbar != .rich {
@@ -274,9 +320,15 @@ class EditorViewController: UIViewController, UITextViewDelegate {
             self.toolbar = .markdown
             self.addToolBar(textField: editArea, toolbar: getMarkdownToolbar())
         }
+
+        if let scroll = editArea.inputAccessoryView as? UIScrollView {
+            scroll.contentOffset = .zero
+        }
     }
     
-    func refill() {
+    @objc func refill() {
+        guard let editArea = editArea else { return }
+
         initLinksColor()
         
         if let note = self.note {
@@ -292,7 +344,7 @@ class EditorViewController: UIViewController, UITextViewDelegate {
             } else {
                 editArea.keyboardAppearance = .light
             }
-            
+
             fill(note: note)
             
             editArea.selectedRange = range
@@ -302,12 +354,25 @@ class EditorViewController: UIViewController, UITextViewDelegate {
             }
         }
     }
-    
+
     // RTF style completions
     func textView(_ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String) -> Bool {
 
-        guard let note = self.note else {
+        if isUndoAction {
+            isUndoAction = false
             return true
+        }
+
+        guard let note = self.note else { return true }
+
+        tagsHandler(affectedCharRange: range, text: text)
+        wikilinkHandler(textView: textView, text: text)
+
+        if text == "" {
+            let lastChar = textView.textStorage.attributedSubstring(from: range).string
+            if lastChar.count == 1 {
+                EditTextView.lastRemoved = lastChar
+            }
         }
 
         self.restoreRTFTypingAttributes(note: note)
@@ -318,31 +383,16 @@ class EditorViewController: UIViewController, UITextViewDelegate {
             self.applyStrikeTypingAttribute(range: range)
         }
 
-        /*
-        // Paste in UITextView
-        if note.isMarkdown() && text == UIPasteboard.general.string {
-            self.editArea.insertText(text)
-            NotesTextProcessor.fullScan(note: note, storage: editArea.textStorage, range: NSRange(0..<editArea.textStorage.length), async: true)
-            return false
-        }
-        
-        // Delete backward pressed
-        if self.deleteBackwardPressed(text: text) {
-            self.editArea.deleteBackward()
-            let formatter = TextFormatter(textView: self.editArea, note: note, shouldScanMarkdown: false)
-            formatter.deleteKey()
-            return false
-        }
-        */
-        
         // New line
         if text == "\n" {
             let formatter = TextFormatter(textView: self.editArea, note: note, shouldScanMarkdown: false)
             formatter.newLine()
+
             return false
         } else {
             let paragraphStyle = NSMutableParagraphStyle()
             paragraphStyle.alignment = .left
+            paragraphStyle.lineSpacing = CGFloat(UserDefaultsManagement.editorLineSpacing)
             editArea.typingAttributes[.paragraphStyle] = paragraphStyle
         }
 
@@ -350,6 +400,7 @@ class EditorViewController: UIViewController, UITextViewDelegate {
         if text == "\t" {
             let formatter = TextFormatter(textView: self.editArea, note: note, shouldScanMarkdown: false)
             formatter.tabKey()
+
             return false
         }
 
@@ -358,6 +409,244 @@ class EditorViewController: UIViewController, UITextViewDelegate {
         }
 
         return true
+    }
+
+    private func tagsHandler(affectedCharRange: NSRange, text: String) {
+        guard UserDefaultsManagement.inlineTags else { return }
+
+        let textStorage = editArea.textStorage
+
+        if text.count == 1, !["", " ", "\t", "\n"].contains(text) {
+            let parRange = textStorage.mutableString.paragraphRange(for: NSRange(location: affectedCharRange.location, length: 0))
+
+            var nextChar = " "
+            let nextCharLocation = affectedCharRange.location + 1
+            if editArea.selectedRange.length == 0, nextCharLocation <= textStorage.length {
+                let nextCharRange = NSRange(location: affectedCharRange.location, length: 1)
+                nextChar = textStorage.mutableString.substring(with: nextCharRange)
+            }
+
+            if affectedCharRange.location - 1 >= 0 {
+                let hashRange = NSRange(location: affectedCharRange.location - 1, length: 1)
+
+                if (textStorage.string as NSString).substring(with: hashRange) == "#" && text != "#" && nextChar.isWhitespace {
+
+                    let vc = UIApplication.getVC()
+
+                    if let project = vc.searchQuery.project {
+                        let tags = vc.sidebarTableView.getAllTags(projects: [project])
+                        self.dropDown.dataSource = tags.filter({ $0.starts(with: text) })
+
+                        self.complete(offset: hashRange.location, text: text)
+                    }
+                }
+            }
+
+            textStorage.mutableString.enumerateSubstrings(in: parRange, options: .byWords, using: { word, range, _, stop in
+                if word == nil || affectedCharRange.location > range.upperBound || affectedCharRange.location < range.lowerBound || range.location <= 0 {
+                    return
+                }
+
+                let hashRange = NSRange(location: range.location - 1, length: 1)
+
+                if (textStorage.string as NSString).substring(with: hashRange) == "#", nextChar.isWhitespace {
+
+                    let vc = UIApplication.getVC()
+                    if let project = vc.searchQuery.project {
+                        let tags = vc.sidebarTableView.getAllTags(projects: [project])
+
+                        if let word = word {
+                            self.dropDown.dataSource = tags.filter({ $0.starts(with: word + text) })
+                        }
+
+                        self.complete(offset: hashRange.location, range: range, text: text)
+                        stop.pointee = true
+                    }
+
+                    return
+                }
+            })
+
+            if text == "#" {
+                let vc = UIApplication.getVC()
+
+                if let project = vc.searchQuery.project {
+                    let tags = vc.sidebarTableView.getAllTags(projects: [project])
+                    self.dropDown.dataSource = tags
+                    self.complete(offset: self.editArea.selectedRange.location)
+                }
+            }
+        }
+
+        if ["", " ", "\t", "\n"].contains(text), !dropDown.isHidden {
+            dropDown.hide()
+        }
+    }
+
+    private func wikilinkHandler(textView: UITextView, text: String) {
+        guard text.count == 1, !["\n"].contains(text) else { return }
+
+        let textStorage = textView.textStorage
+        let location = textView.selectedRange.location
+
+        // Encoded offset for Emoji
+        guard let cursor = textView.cursorDistance else { return }
+
+        let parRange = textStorage.mutableString.paragraphRange(for: NSRange(location: location, length: 0))
+
+        let paragraph = textStorage.attributedSubstring(from: parRange).string
+        guard paragraph.contains("[[") && paragraph.contains("]]"),
+            let result = isBetweenBraces(location: cursor) else { return }
+
+        let word = result.0 + text
+
+        guard let titles = Storage.shared().getTitles(by: word) else {
+            dropDown.hide()
+            return
+        }
+
+        dropDown.dataSource = titles
+
+        let range = result.1
+
+        // Decode multibyte offset for Emoji like "🇺🇦"
+        let startIndex = textView.text.index(textView.text.startIndex, offsetBy: range.lowerBound + 2)
+        let startRange = NSRange(startIndex...startIndex, in: textView.text)
+        let replacementRange = NSRange(location: startRange.lowerBound, length: word.count)
+
+        complete(offset: replacementRange.location, replacementRange: replacementRange)
+    }
+
+    private func isBetweenBraces(location: Int) -> (String, NSRange)? {
+        let storage = editArea.textStorage
+        let string = Array(storage.string)
+        let length = storage.length
+
+        var firstLeftFound = false
+        var firstRigthFound = false
+
+        var rigthFound = false
+        var leftFound = false
+
+        var i = location - 1
+        var j = location
+
+        while i >= 0 {
+            let char = string[i]
+            if firstLeftFound {
+                leftFound = char == "["
+                break
+            }
+
+            if char.isNewline {
+                break
+            }
+
+            if char == "[" {
+                firstLeftFound = true
+            }
+
+            i -= 1
+        }
+
+        while length > j {
+            let char = string[j]
+            if firstRigthFound {
+                rigthFound = char == "]"
+                break
+            }
+
+            if char.isNewline {
+                break
+            }
+
+            if char == "]" {
+                firstRigthFound = true
+            }
+
+            j += 1
+        }
+
+        var result = String()
+        if leftFound && rigthFound {
+            result =
+                String(string[i...j])
+
+            result = result
+                .replacingOccurrences(of: "[[", with: "")
+                .replacingOccurrences(of: "]]", with: "")
+
+            return (result, NSRange(i...j))
+        }
+
+        return nil
+    }
+
+    private func complete(offset: Int? = nil, range: NSRange? = nil, text: String? = nil, replacementRange: NSRange? = nil) {
+        var endPosition: UITextPosition = editArea.endOfDocument
+
+        if let offset = offset,
+            let position = editArea.position(from: editArea.beginningOfDocument, offset: offset) {
+            endPosition = position
+        }
+
+        let rect = editArea.caretRect(for: endPosition)
+
+        let customView = UIView(frame: CGRect(x: rect.origin.x, y: rect.origin.y + 30, width: 200, height: 0))
+        editArea.addSubview(customView)
+
+        dropDown.cellHeight = 35
+        dropDown.textFont = UIFont.boldSystemFont(ofSize: 15)
+        dropDown.mixedBackgroundColor = MixedColor(normal: 0xfafafa, night: 0x000000)
+        dropDown.textColor = NightNight.theme == .night ? UIColor.white : UIColor.gray
+        dropDown.anchorView = customView
+        dropDown.selectionAction = { [unowned self] (index: Int, item: String) in
+            customView.removeFromSuperview()
+
+            // WikiLinks
+            if let range = replacementRange {
+                guard
+                    let textView = self.editArea,
+                    let start = textView.position(from: textView.beginningOfDocument, offset: range.location),
+                    let end = textView.position(from: start, offset: range.length),
+                    let selectedRange = textView.textRange(from: start, to: end)
+                else { return }
+
+                self.editArea.replace(selectedRange, withText: item)
+                self.editArea.selectedRange = NSRange(location: range.location + item.count + 2, length: 0)
+                return
+            }
+
+            if let range = range, let text = text {
+                let string = self.editArea.textStorage.mutableString.substring(with: range) + text
+
+                let addText = item.replacingOccurrences(of: string, with: "")
+                self.editArea.insertText(addText + " ")
+            } else if text != nil {
+                let addText = String(item.dropFirst())
+
+                self.editArea.insertText(addText + " ")
+            } else {
+                self.editArea.insertText(item + " ")
+            }
+        }
+
+        dropDown.show()
+    }
+
+    @objc public func scanTags() {
+        guard UserDefaultsManagement.inlineTags else { return }
+        guard let note = EditTextView.note else { return }
+
+        UIApplication.getVC().sidebarTableView.loadTags(notes: [note])
+
+        if UserDefaultsManagement.naming == .autoRename {
+            let title = note.title.withoutSpecialCharacters.trunc(length: 64)
+
+            if note.fileName != title && title.count > 0 {
+                UIApplication.getVC().notesTable.rename(note: note, to: title, presentController: self)
+            }
+        }
     }
 
     private func deleteUnusedImages(checkRange: NSRange) {
@@ -432,7 +721,7 @@ class EditorViewController: UIViewController, UITextViewDelegate {
     private func getDefaultFont() -> UIFont {
         var font = UserDefaultsManagement.noteFont!
 
-        if #available(iOS 11.0, *) {
+        if UserDefaultsManagement.dynamicTypeFont {
             let fontMetrics = UIFontMetrics(forTextStyle: .body)
             font = fontMetrics.scaledFont(for: font)
         }
@@ -449,19 +738,26 @@ class EditorViewController: UIViewController, UITextViewDelegate {
         
         return false
     }
-    
-    func textViewDidChange(_ textView: UITextView) {
-        guard
-            let pageController = UIApplication.shared.windows[0].rootViewController as? PageViewController,
-            let vc = pageController.orderedViewControllers[0] as? ViewController else {
-                return
+
+    func textViewDidChangeSelection(_ textView: UITextView) {
+        guard let note = self.note else { return }
+
+        if textView.isFirstResponder {
+            note.setLastSelectedRange(value: textView.selectedRange)
+
+            // Handoff needs update in cursor position cahnged
+            userActivity?.needsSave = true
         }
+    }
+
+    func textViewDidChange(_ textView: UITextView) {
+        guard let pc = UIApplication.shared.windows[0].rootViewController as? BasicViewController,
+           let vc = pc.containerController.viewControllers[0] as? ViewController
+        else { return }
         
         vc.cloudDriveManager?.metadataQuery.disableUpdates()
         
-        guard let note = self.note else {
-            return
-        }
+        guard let note = self.note else { return }
         
         if isHighlighted {
             let search = getSearchText()
@@ -474,25 +770,48 @@ class EditorViewController: UIViewController, UITextViewDelegate {
         let storage = editArea.textStorage
         let processor = NotesTextProcessor(note: note, storage: storage, range: range)
         
-        if note.type == .PlainText || note.type == .RichText {
+        if note.type == .RichText {
             processor.higlightLinks()
         }
+
+        // Prevent textStorage refresh in CloudDriveManager
+        note.modifiedLocalAt = Date()
+        let text = self.editArea.attributedText
         
         self.storageQueue.cancelAllOperations()
         let operation = BlockOperation()
-        operation.addExecutionBlock {
-            DispatchQueue.main.async {
-                note.content = NSMutableAttributedString(attributedString: self.editArea.attributedText)
-                note.save()
+        operation.addExecutionBlock { [weak self] in
+            guard let self = self else {return}
 
+            if let text = text {
+
+                if note.isEncrypted() && !note.isUnlocked() {
+                    DispatchQueue.main.async {
+                        self.cancel()
+                    }
+
+                    return
+                }
+
+                note.save(attributed: text)
+                note.invalidateCache()
+                note.loadPreviewInfo()
+            }
+
+            vc.updateSpotlightIndex(notes: [note])
+
+            DispatchQueue.main.async {
                 self.rowUpdaterTimer.invalidate()
                 self.rowUpdaterTimer = Timer.scheduledTimer(timeInterval: 1.2, target: self, selector: #selector(self.updateCurrentRow), userInfo: nil, repeats: false)
+
+                self.tagsTimer?.invalidate()
+                self.tagsTimer = Timer.scheduledTimer(timeInterval: 2.5, target: self, selector: #selector(self.scanTags), userInfo: nil, repeats: false)
             }
         }
         self.storageQueue.addOperation(operation)
         
         if var font = UserDefaultsManagement.noteFont {
-            if #available(iOS 11.0, *) {
+            if #available(iOS 11.0, *), UserDefaultsManagement.dynamicTypeFont {
                 let fontMetrics = UIFontMetrics(forTextStyle: .body)
                 font = fontMetrics.scaledFont(for: font)
             }
@@ -504,28 +823,24 @@ class EditorViewController: UIViewController, UITextViewDelegate {
         editArea.initUndoRedoButons()
         
         vc.cloudDriveManager?.metadataQuery.enableUpdates()
-        vc.notesTable.moveRowUp(note: note)
     }
 
     @objc private func updateCurrentRow() {
-        guard
-            let pageController = UIApplication.shared.windows[0].rootViewController as? PageViewController,
-            let vc = pageController.orderedViewControllers[0] as? ViewController,
+        guard let pc = UIApplication.shared.windows[0].rootViewController as? BasicViewController,
+            let vc = pc.containerController.viewControllers[0] as? ViewController,
             let note = self.note
-        else {
-            return
-        }
+        else { return }
 
-        note.invalidateCache()
-        vc.notesTable.beginUpdates()
-        vc.notesTable.reloadRow(note: note)
-        vc.notesTable.endUpdates()
+        vc.notesTable.moveRowUp(note: note)
     }
     
     func getSearchText() -> String {
-        if let pageController = UIApplication.shared.windows[0].rootViewController as? PageViewController, let viewController = pageController.orderedViewControllers[0] as? ViewController, let search = viewController.search.text {
+        if let pc = UIApplication.shared.windows[0].rootViewController as? BasicViewController,
+            let vc = pc.containerController.viewControllers[0] as? ViewController,
+            let search = vc.search.text {
             return search
         }
+
         return ""
     }
 
@@ -548,6 +863,14 @@ class EditorViewController: UIViewController, UITextViewDelegate {
         let contentInsets = UIEdgeInsets(top: 0.0, left: 0.0, bottom: keyboardHeight + padding, right: 0.0)
         self.editArea.contentInset = contentInsets
         self.editArea.scrollIndicatorInsets = contentInsets
+
+        guard let note = self.note else { return }
+
+        if let last = note.getLastSelectedRange() {
+            editArea.selectedRange = last
+        }
+
+        restoreContentOffset()
     }
     
     @objc func keyboardWillHide(notification: NSNotification) {
@@ -557,19 +880,29 @@ class EditorViewController: UIViewController, UITextViewDelegate {
         editArea.scrollIndicatorInsets = contentInsets
     }
 
-    func addToolBar(textField: UITextView, toolbar: UIToolbar) {
-        let scroll = UIScrollView(frame: CGRect(x: 0, y: 0, width: self.view.frame.width, height: toolbar.frame.height))
+    public func resetToolbar() {
+        toolbar = .none
+    }
 
-        scroll.mixedBackgroundColor = MixedColor(normal: 0xe9e9e9, night: 0x535059)
+    func addToolBar(textField: UITextView, toolbar: UIToolbar) {
+        let scrollFrame = CGRect(x: 0, y: 0, width: self.view.frame.width, height: toolbar.frame.height)
+        let scroll = UIScrollView(frame: scrollFrame)
         scroll.showsHorizontalScrollIndicator = false
         scroll.contentSize = CGSize(width: toolbar.frame.width, height: toolbar.frame.height)
         scroll.addSubview(toolbar)
+
+        let topBorder = CALayer()
+        topBorder.frame = CGRect(x: -1000, y: 0, width: 9999, height: 1)
+        topBorder.mixedBackgroundColor = MixedColor(normal: 0xD5D7DD, night: 0x373739)
+        scroll.layer.addSublayer(topBorder)
 
         let isFirst = textField.isFirstResponder
         if isFirst {
             textField.endEditing(true)
         }
 
+        let inputAccView = UIInputView(frame: scrollFrame, inputViewStyle: .keyboard)
+        inputAccView.addSubview(scroll)
         textField.inputAccessoryView = scroll
 
         if isFirst {
@@ -582,27 +915,85 @@ class EditorViewController: UIViewController, UITextViewDelegate {
     }
 
     private func getMarkdownToolbar() -> UIToolbar {
-        let width = self.editArea.superview!.frame.width
-        let toolBar = UIToolbar(frame: CGRect.init(x: 0, y: 0, width: width, height: 44))
+        var items = [UIBarButtonItem]()
 
-        toolBar.mixedBarTintColor = MixedColor(normal: 0xe9e9e9, night: 0x47444e)
-        toolBar.mixedTintColor = MixedColor(normal: 0x4d8be6, night: 0x7eeba1)
+        let todoImage = UIImage(named: "toolbarTodo")?.resize(maxWidthHeight: 27)
+        let todoButton = UIBarButtonItem(image: todoImage, landscapeImagePhone: nil, style: .done, target: self, action: #selector(EditorViewController.todoPressed))
+        items.append(todoButton)
 
-        let imageButton = UIBarButtonItem(image: UIImage(named: "image"), landscapeImagePhone: nil, style: .done, target: self, action: #selector(EditorViewController.imagePressed))
-        let boldButton = UIBarButtonItem(image: #imageLiteral(resourceName: "bold.png"), landscapeImagePhone: nil, style: .done, target: self, action: #selector(EditorViewController.boldPressed))
-        let italicButton = UIBarButtonItem(image: #imageLiteral(resourceName: "italic.png"), landscapeImagePhone: nil, style: .done, target: self, action: #selector(EditorViewController.italicPressed))
-        let indentButton = UIBarButtonItem(image: #imageLiteral(resourceName: "indent.png"), landscapeImagePhone: nil, style: .done, target: self, action: #selector(EditorViewController.indentPressed))
-        let unindentButton = UIBarButtonItem(image: #imageLiteral(resourceName: "unindent.png"), landscapeImagePhone: nil, style: .done, target: self, action: #selector(EditorViewController.unIndentPressed))
-        let headerButton = UIBarButtonItem(image: #imageLiteral(resourceName: "header.png"), landscapeImagePhone: nil, style: .done, target: self, action: #selector(EditorViewController.headerPressed))
-        let todoButton = UIBarButtonItem(image: UIImage(named: "todo"), landscapeImagePhone: nil, style: .done, target: self, action: #selector(EditorViewController.todoPressed))
+        if UserDefaultsManagement.inlineTags {
+            let tagImage = UIImage(named: "toolbarTag")?.resize(maxWidthHeight: 25)
+            let tagButton = UIBarButtonItem(image: tagImage, landscapeImagePhone: nil, style: .done, target: self, action: #selector(EditorViewController.tagPressed))
+            items.append(tagButton)
+        }
+
+        let boldImage = UIImage(named: "toolbarBold")?.resize(maxWidthHeight: 21)
+        let boldButton = UIBarButtonItem(image: boldImage, landscapeImagePhone: nil, style: .done, target: self, action: #selector(EditorViewController.boldPressed))
+        items.append(boldButton)
+
+        let italicImage = UIImage(named: "toolbarItalic")?.resize(maxWidthHeight: 18)
+        let italicButton = UIBarButtonItem(image: italicImage, landscapeImagePhone: nil, style: .done, target: self, action: #selector(EditorViewController.italicPressed))
+        italicButton.tag = 0x03
+        items.append(italicButton)
+
+        let headerImage = UIImage(named: "toolbarHeader")?.resize(maxWidthHeight: 22)
+        let headerButton = UIBarButtonItem(image: headerImage, landscapeImagePhone: nil, style: .done, target: self, action: #selector(EditorViewController.headerPressed))
+        items.append(headerButton)
+
+        let wikiImage = UIImage(named: "toolbarWiki")?.resize(maxWidthHeight: 25)
+        let wikiButton = UIBarButtonItem(image: wikiImage, landscapeImagePhone: nil, style: .done, target: self, action: #selector(EditorViewController.wikilink))
+        items.append(wikiButton)
+
+        let toolbarImage = UIImage(named: "toolbarImage")?.resize(maxWidthHeight: 26)
+        let imageButton = UIBarButtonItem(image: toolbarImage, landscapeImagePhone: nil, style: .done, target: self, action: #selector(EditorViewController.insertImage))
+        items.append(imageButton)
+
+        let codeBlockImage = UIImage(named: "codeBlockAsset")?.resize(maxWidthHeight: 24)
+        let codeblockButton = UIBarButtonItem(image: codeBlockImage, landscapeImagePhone: nil, style: .done, target: self, action: #selector(EditorViewController.codeBlockButton))
+        items.append(codeblockButton)
+
+        let quoteImage = UIImage(named: "quote")?.resize(maxWidthHeight: 21)
+        let quoteButton = UIBarButtonItem(image: quoteImage, landscapeImagePhone: nil, style: .done, target: self, action: #selector(EditorViewController.quotePressed))
+        items.append(quoteButton)
+
+        let orderedListImage = UIImage(named: "ordered_list")?.resize(maxWidthHeight: 25)
+        let orderedListButton = UIBarButtonItem(image: orderedListImage, landscapeImagePhone: nil, style: .done, target: self, action: #selector(EditorViewController.orderedListPressed))
+        items.append(orderedListButton)
+
+        let numberedListImage = UIImage(named: "numbered_list")?.resize(maxWidthHeight: 25)
+        let numberedListButton = UIBarButtonItem(image: numberedListImage, landscapeImagePhone: nil, style: .done, target: self, action: #selector(EditorViewController.numberedListPressed))
+        items.append(numberedListButton)
+
+        let indentRightImage = UIImage(named: "toolbarIndentRight")?.resize(maxWidthHeight: 25)
+        let indentButton = UIBarButtonItem(image: indentRightImage, landscapeImagePhone: nil, style: .done, target: self, action: #selector(EditorViewController.indentPressed))
+        items.append(indentButton)
+
+        let indentLeftImage = UIImage(named: "toolbarIndentLeft")?.resize(maxWidthHeight: 25)
+        let unindentButton = UIBarButtonItem(image: indentLeftImage, landscapeImagePhone: nil, style: .done, target: self, action: #selector(EditorViewController.unIndentPressed))
+        items.append(unindentButton)
+
         let undoButton = UIBarButtonItem(image: #imageLiteral(resourceName: "undo.png"), landscapeImagePhone: nil, style: .done, target: self, action: #selector(EditorViewController.undoPressed))
+        items.append(undoButton)
+
         let redoButton = UIBarButtonItem(image: #imageLiteral(resourceName: "redo.png"), landscapeImagePhone: nil, style: .done, target: self, action: #selector(EditorViewController.redoPressed))
+        items.append(redoButton)
 
-        let doneButton = UIBarButtonItem(title: "Done", style: UIBarButtonItem.Style.done, target: self, action: #selector(EditorViewController.donePressed))
-        let spaceButton = UIBarButtonItem(barButtonSystemItem: UIBarButtonItem.SystemItem.flexibleSpace, target: nil, action: nil)
+        var width = CGFloat(0)
+        for item in items {
+            if item.tag == 0x03 {
+                item.width = 30
+                width += 30
+            } else {
+                item.width = 50
+                width += 50
+            }
+        }
 
-        toolBar.setItems([todoButton, boldButton, italicButton, indentButton, unindentButton, headerButton, imageButton, spaceButton, undoButton, redoButton, doneButton], animated: false)
-
+        let toolBar = UIToolbar(frame: CGRect.init(x: 0, y: 0, width: width, height: 40))
+        toolBar.backgroundColor = .darkGray
+        toolBar.isTranslucent = false
+        toolBar.mixedTintColor = MixedColor(normal: 0x4d8be6, night: 0x7eeba1)
+        toolBar.setItems(items, animated: false)
         toolBar.isUserInteractionEnabled = true
 
         return toolBar
@@ -612,7 +1003,7 @@ class EditorViewController: UIViewController, UITextViewDelegate {
         let width = self.editArea.superview!.frame.width
         let toolBar = UIToolbar(frame: CGRect.init(x: 0, y: 0, width: width, height: 44))
 
-        toolBar.mixedBarTintColor = MixedColor(normal: 0xe9e9e9, night: 0x47444e)
+        toolBar.mixedBarTintColor = MixedColor(normal: 0xffffff, night: 0x272829)
         toolBar.mixedTintColor = MixedColor(normal: 0x4d8be6, night: 0x7eeba1)
 
         let boldButton = UIBarButtonItem(image: #imageLiteral(resourceName: "bold.png"), landscapeImagePhone: nil, style: .done, target: self, action: #selector(EditorViewController.boldPressed))
@@ -623,10 +1014,9 @@ class EditorViewController: UIViewController, UITextViewDelegate {
         let undoButton = UIBarButtonItem(image: #imageLiteral(resourceName: "undo.png"), landscapeImagePhone: nil, style: .done, target: self, action: #selector(EditorViewController.undoPressed))
         let redoButton = UIBarButtonItem(image: #imageLiteral(resourceName: "redo.png"), landscapeImagePhone: nil, style: .done, target: self, action: #selector(EditorViewController.redoPressed))
 
-        let doneButton = UIBarButtonItem(title: "Done", style: UIBarButtonItem.Style.done, target: self, action: #selector(EditorViewController.donePressed))
         let spaceButton = UIBarButtonItem(barButtonSystemItem: UIBarButtonItem.SystemItem.flexibleSpace, target: nil, action: nil)
 
-        toolBar.setItems([boldButton, italicButton, strikeButton, underlineButton, spaceButton, undoButton, redoButton, doneButton], animated: false)
+        toolBar.setItems([boldButton, italicButton, strikeButton, underlineButton, spaceButton, undoButton, redoButton], animated: false)
 
         toolBar.isUserInteractionEnabled = true
         toolBar.sizeToFit()
@@ -634,32 +1024,24 @@ class EditorViewController: UIViewController, UITextViewDelegate {
         return toolBar
     }
 
-    private func getPlainTextToolbar() -> UIToolbar {
-        let width = self.editArea.superview!.frame.width
-        let toolBar = UIToolbar(frame: CGRect.init(x: 0, y: 0, width: width, height: 44))
-
-        toolBar.mixedBarTintColor = MixedColor(normal: 0xfafafa, night: 0x47444e)
-        toolBar.mixedTintColor = MixedColor(normal: 0x4d8be6, night: 0x7eeba1)
-
-        let undoButton = UIBarButtonItem(image: #imageLiteral(resourceName: "undo.png"), landscapeImagePhone: nil, style: .done, target: self, action: #selector(EditorViewController.undoPressed))
-        let redoButton = UIBarButtonItem(image: #imageLiteral(resourceName: "redo.png"), landscapeImagePhone: nil, style: .done, target: self, action: #selector(EditorViewController.redoPressed))
-
-        let doneButton = UIBarButtonItem(title: "Done", style: UIBarButtonItem.Style.done, target: self, action: #selector(EditorViewController.donePressed))
-        let spaceButton = UIBarButtonItem(barButtonSystemItem: UIBarButtonItem.SystemItem.flexibleSpace, target: nil, action: nil)
-
-        toolBar.setItems([spaceButton, undoButton, redoButton, doneButton], animated: false)
-
-        toolBar.isUserInteractionEnabled = true
-        toolBar.sizeToFit()
-
-        return toolBar
-    }
-    
     @objc func boldPressed(){
         if let note = note {
             let formatter = TextFormatter(textView: editArea, note: note)
             formatter.bold()
         }
+    }
+
+    @objc func tagPressed(){
+        editArea.insertText("#")
+
+        let location = editArea.selectedRange.location
+
+        let vc = UIApplication.getVC()
+        guard let project = vc.searchQuery.project else { return }
+        let tags = vc.sidebarTableView.getAllTags(projects: [project])
+        self.dropDown.dataSource = tags
+
+        self.complete(offset: location)
     }
     
     @objc func italicPressed(){
@@ -703,14 +1085,93 @@ class EditorViewController: UIViewController, UITextViewDelegate {
             formatter.header("#")
         }
     }
+
+    @objc func wikilink() {
+        editArea.insertText("[[]]")
+        let location = editArea.selectedRange.location - 2
+        let range = NSRange(location: location, length: 0)
+        editArea.selectedRange = range
+
+        guard let titles = Storage.sharedInstance().getTitles() else { return }
+
+        self.dropDown.dataSource = titles
+        self.complete(offset: location, replacementRange: range)
+    }
+
+    @objc func codeBlockButton() {
+        if let note = note {
+            let formatter = TextFormatter(textView: editArea, note: note, shouldScanMarkdown: false)
+            formatter.codeBlock()
+        }
+    }
+
+    @objc func quotePressed() {
+        if let note = note {
+            let formatter = TextFormatter(textView: editArea, note: note, shouldScanMarkdown: false)
+            formatter.quote()
+
+            AudioServicesPlaySystemSound(1519)
+        }
+    }
     
     @objc func todoPressed() {
         if let note = note {
             let formatter = TextFormatter(textView: editArea, note: note)
-            formatter.toggleTodo()
+            formatter.todo()
             
             AudioServicesPlaySystemSound(1519)
         }
+    }
+
+    @objc func orderedListPressed() {
+        if let note = note {
+            let formatter = TextFormatter(textView: editArea, note: note, shouldScanMarkdown: false)
+            formatter.list()
+
+            AudioServicesPlaySystemSound(1519)
+        }
+    }
+
+    @objc func numberedListPressed() {
+        if let note = note {
+            let formatter = TextFormatter(textView: editArea, note: note, shouldScanMarkdown: false)
+            formatter.orderedList()
+
+            AudioServicesPlaySystemSound(1519)
+        }
+    }
+
+    @objc func insertImage() {
+        let actionSheet = UIAlertController(title: NSLocalizedString("Images source:", comment: ""), message: nil, preferredStyle: .actionSheet)
+
+        let photos = UIAlertAction(title: NSLocalizedString("Photos", comment: ""), style: .default, handler: { _ in
+            self.imagePressed()
+        })
+        actionSheet.addAction(photos)
+
+        let iCloudDrive = UIAlertAction(title: NSLocalizedString("Documents", comment: ""), style: .default, handler: { _ in
+
+            let documentPickerController = UIDocumentPickerViewController(documentTypes: [String(kUTTypeImage)], in: .import)
+            documentPickerController.delegate = self
+            documentPickerController.allowsMultipleSelection = true
+            documentPickerController.modalPresentationStyle = .formSheet
+
+            self.present(documentPickerController, animated: true, completion: nil)
+        })
+
+        actionSheet.addAction(iCloudDrive)
+
+        let cancel = UIAlertAction(title: NSLocalizedString("Cancel", comment: ""), style: .destructive, handler: { _ in
+        })
+
+        actionSheet.addAction(cancel)
+
+        if let view = self.editArea.superview {
+            actionSheet.popoverPresentationController?.sourceView = view
+            actionSheet.popoverPresentationController?.sourceRect = CGRect(x: view.bounds.size.width / 2.0, y: view.bounds.size.height, width: 2.0, height: 1.0)
+        }
+
+        present(actionSheet, animated: true, completion: nil)
     }
 
     @objc func imagePressed() {
@@ -730,12 +1191,14 @@ class EditorViewController: UIViewController, UITextViewDelegate {
                         processed += 1
 
                         var imageExt = "jpg"
-                        if let uti = info?["PHImageFileUTIKey"] as? String, let ext = UTTypeCopyPreferredTagWithClass(uti as CFString, kUTTagClassFilenameExtension)?.takeRetainedValue() {
+                        if let uti = info?["PHImageFileUTIKey"] as? String,
+                            let ext = UTTypeCopyPreferredTagWithClass(uti as CFString, kUTTagClassFilenameExtension)?.takeRetainedValue()
+                        {
                             imageExt = String(ext)
                         }
 
                         var url = URL(fileURLWithPath: "file:///tmp/" + UUID().uuidString + "." + imageExt)
-                        let data: Data?
+                        var data: Data?
 
                         if let fileURL = info?["PHImageFileURLKey"] as? URL,
                             fileURL.pathExtension.lowercased() == "heic",
@@ -745,15 +1208,25 @@ class EditorViewController: UIViewController, UITextViewDelegate {
                             url.deletePathExtension()
                             url.appendPathExtension("jpg")
                         } else if let fileData = info?["PHImageFileDataKey"] as? Data {
-                            if imageExt == "heic" {
+                            let format = ImageFormat.get(from: fileData)
+
+                            if format == .heic {
                                 data = UIImage(data: fileData)?.jpegData(compressionQuality: 1)
                                 imageExt = "jpg"
                             } else {
                                 data = fileData
+
+                                let ext = ImageFormat.get(from: data!)
+                                let path = "file:///tmp/" + UUID().uuidString + "." + ext.rawValue
+                                url = URL(fileURLWithPath: path)
                             }
-                        } else {
+                        } else if let imageFileUrl = info?["PHImageFileURLKey"] as? URL {
                             do {
-                                data = try Data(contentsOf: url)
+                                data = try Data(contentsOf: imageFileUrl)
+
+                                let ext = ImageFormat.get(from: data!)
+                                let path = "file:///tmp/" + UUID().uuidString + "." + ext.rawValue
+                                url = URL(fileURLWithPath: path)
                             } catch {
                                 return
                             }
@@ -763,27 +1236,33 @@ class EditorViewController: UIViewController, UITextViewDelegate {
 
                         if UserDefaultsManagement.liveImagesPreview {
                             self.editArea.saveImageClipboard(data: imageData, note: note, ext: imageExt)
-                            note.save()
+
+                            if processed == assets.count {
+                                note.save(attributed: self.editArea.attributedText)
+
+                                UIApplication.getVC().notesTable.reloadRowForce(note: note)
+                                return
+                            }
+
+                            if assets.count != 1 {
+                                self.editArea.insertText("\n\n")
+                            }
+
                             return
                         }
 
-                        guard let fileName = ImagesProcessor.writeImage(data: imageData, url: url, note: note, ext: imageExt) else { return }
+                        guard let path = ImagesProcessor.writeFile(data: imageData, url: url, note: note, ext: imageExt) else { return }
 
-                        if note.isTextBundle() {
-                            markup += "![](assets/\(fileName))"
-                        } else {
-                            markup += "![](/i/\(fileName))"
-                        }
-
-                        markup += "\n\n"
+                        markup += "![](\(path))\n\n"
 
                         guard processed == assets.count else { return }
 
                         DispatchQueue.main.async {
                             self.editArea.insertText(markup)
 
-                            note.content = NSMutableAttributedString(attributedString: self.editArea.attributedText)
-                            note.save()
+                            note.save(attributed: self.editArea.attributedText)
+                            UIApplication.getVC().notesTable.reloadRowForce(note: note)
+                            
                             note.isParsed = false
 
                             self.editArea.undoManager?.removeAllActions()
@@ -796,15 +1275,69 @@ class EditorViewController: UIViewController, UITextViewDelegate {
             present(pickerController, animated: true) {}
         }
     }
-    
-    @objc func donePressed(){
-        view.endEditing(true)
+
+    func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+        guard let note = self.note else { return }
+
+        var processed = 0
+        var markup = String()
+
+        for url in urls {
+            guard var data = try? Data(contentsOf: url) else { continue }
+
+            processed += 1
+
+            let format = ImageFormat.get(from: data)
+            var imageExt = "jpg"
+
+            switch format {
+            case .heic:
+                if let jpegData = UIImage(data: data)?.jpegData(compressionQuality: 1) {
+                    data = jpegData
+                }
+            default:
+                imageExt = format.rawValue
+            }
+
+            let url = URL(fileURLWithPath: "file:///tmp/" + UUID().uuidString + "." + imageExt)
+
+            if UserDefaultsManagement.liveImagesPreview {
+                self.editArea.saveImageClipboard(data: data, note: note, ext: imageExt)
+
+                if processed == urls.count {
+                    note.save(attributed: self.editArea.attributedText)
+
+                    UIApplication.getVC().notesTable.reloadRowForce(note: note)
+                    continue
+                }
+
+                if urls.count != 1 {
+                    self.editArea.insertText("\n\n")
+                }
+
+                continue
+            }
+
+            guard let path = ImagesProcessor.writeFile(data: data, url: url, note: note, ext: imageExt) else { return }
+
+             markup += "![](\(path))\n\n"
+
+             guard processed == urls.count else { continue }
+
+             DispatchQueue.main.async {
+                 self.editArea.insertText(markup)
+
+                 note.save(attributed: self.editArea.attributedText)
+                 UIApplication.getVC().notesTable.reloadRowForce(note: note)
+
+                 note.isParsed = false
+
+                 self.editArea.undoManager?.removeAllActions()
+                 self.refill()
+             }
+        }
     }
-    
-    @objc func cancelPressed(){
-        view.endEditing(true)
-    }
-    
+
     @objc func preferredContentSizeChanged() {
         if let n = note {
             self.fill(note: n)
@@ -812,13 +1345,13 @@ class EditorViewController: UIViewController, UITextViewDelegate {
     }
     
     @objc func undoPressed() {
-        guard
-            let pageController = UIApplication.shared.windows[0].rootViewController as? PageViewController,
-            let vc = pageController.orderedViewControllers[1] as? UINavigationController,
-            let evc = vc.viewControllers[0] as? EditorViewController,
-            let ea = evc.editArea,
+        isUndoAction = true
+
+        let evc = UIApplication.getEVC()
+
+        guard let ea = evc.editArea,
             let um = ea.undoManager else {
-                return
+            return
         }
         
         self.isUndo = true
@@ -833,13 +1366,12 @@ class EditorViewController: UIViewController, UITextViewDelegate {
     }
     
     @objc func redoPressed() {
-        guard
-            let pageController = UIApplication.shared.windows[0].rootViewController as? PageViewController,
-            let vc = pageController.orderedViewControllers[1] as? UINavigationController,
-            let evc = vc.viewControllers[0] as? EditorViewController,
-            let ea = evc.editArea,
+        isUndoAction = true
+
+        let evc = UIApplication.getEVC()
+        guard let ea = evc.editArea,
             let um = ea.undoManager else {
-                return
+            return
         }
         
         um.redo()
@@ -863,23 +1395,10 @@ class EditorViewController: UIViewController, UITextViewDelegate {
         }
     }
 
-    @objc private func tapUp(_ sender: UITapGestureRecognizer) {
-        DispatchQueue.main.async {
-            self.editArea.becomeFirstResponder()
-        }
-    }
-
-    @objc private func tapHandler(_ sender: UITapGestureRecognizer) {
+    @objc private func tapHandler(_ sender: SingleTouchDownGestureRecognizer) {
         let myTextView = sender.view as! UITextView
-        let layoutManager = myTextView.layoutManager
-        
-        var location = sender.location(in: myTextView)
-        location.x -= myTextView.textContainerInset.left;
-        location.y -= myTextView.textContainerInset.top;
-
-        var characterIndex = layoutManager.characterIndex(for: location, in: myTextView.textContainer, fractionOfDistanceBetweenInsertionPoints: nil)
-
-        let char = Array(myTextView.textStorage.string)[characterIndex]
+        guard let characterIndex = sender.touchCharIndex else { return}
+        let char = myTextView.textStorage.mutableString.substring(with: NSRange(location: characterIndex, length: 1))
 
         // Toggle todo on click
         if characterIndex + 1 < myTextView.textStorage.length, char != "\n", self.isTodo(location: characterIndex, textView: myTextView), let note = self.note {
@@ -894,9 +1413,10 @@ class EditorViewController: UIViewController, UITextViewDelegate {
             AudioServicesPlaySystemSound(1519)
             return
         }
-        
+
         // Image preview/selection on click
         if self.editArea.isImage(at: characterIndex) && myTextView.textStorage.attribute(.todo, at: characterIndex, effectiveRange: nil) == nil {
+
             // Select and show menu
             guard !self.editArea.isFirstResponder else {
                 self.editArea.selectedRange = NSRange(location: characterIndex, length: 1)
@@ -914,43 +1434,103 @@ class EditorViewController: UIViewController, UITextViewDelegate {
             guard let path = myTextView.textStorage.attribute(pathKey, at: characterIndex, effectiveRange: nil) as? String, let note = self.note, let url = note.getImageUrl(imageName: path) else { return }
 
             if let data = try? Data(contentsOf: url), let someImage = UIImage(data: data) {
-                let imageInfo   = GSImageInfo(image: someImage, imageMode: .aspectFit)
-                let transitiionInfo = GSTransitionInfo(fromRect: CGRect.init())
-                let imageViewer = GSImageViewerController(imageInfo: imageInfo, transitionInfo: transitiionInfo)
-                present(imageViewer, animated: true, completion: nil)
+                let storyBoard: UIStoryboard = UIStoryboard(name: "Main", bundle:nil)
+                let imagePreviewViewController = storyBoard.instantiateViewController(withIdentifier: "imagePreviewViewController") as! ImagePreviewViewController
+
+                imagePreviewViewController.image = someImage
+                imagePreviewViewController.url = url
+                present(imagePreviewViewController, animated: true, completion: nil)
             }
 
             return
         }
 
         // Links
-        if self.editArea.isLink(at: characterIndex), !self.editArea.isFirstResponder {
+        if self.editArea.isLink(at: characterIndex) {
             guard let path = self.editArea.textStorage.attribute(.link, at: characterIndex, effectiveRange: nil) as? String else { return }
 
-            if path.starts(with: "fsnotes://find/") {
-                let fileName = path.replacingOccurrences(of: "fsnotes://find/", with: "")
-                if let note = Storage.instance?.getBy(title: fileName) {
-                    fill(note: note)
+            if path.starts(with: "fsnotes://find?id=") {
+                openWikiLink(query: path)
+                return
+            }
+
+//            if path.starts(with: "fsnotes://open/?tag=") {
+//                if let url = URL(string: path) {
+//                    UIApplication.shared.open(url, options: [:])
+//                }
+//
+//                return
+//            }
+
+            if self.editArea.isFirstResponder {
+                DispatchQueue.main.async {
+                    self.editArea.selectedRange = NSRange(location: characterIndex, length: 0)
                 }
-            } else if let url = URL(string: path) {
+
+                return
+            }
+
+            if let url = URL(string: path) {
                 UIApplication.shared.open(url, options: [:], completionHandler: nil)
             }
-            return
         }
 
 
+    }
 
-        DispatchQueue.main.async {
-            self.editArea.becomeFirstResponder()
-            
-            if myTextView.textStorage.length > 0 && characterIndex == myTextView.textStorage.length - 1 {
-                characterIndex += 1
+    public func openWikiLink(query: String) {
+        guard let query = query
+            .replacingOccurrences(of: "fsnotes://find?id=", with: "")
+            .removingPercentEncoding else { return }
+
+        guard let note = note else { return }
+
+        if let note = Storage.instance?.getBy(title: query, exclude: note) {
+            fill(note: note)
+        } else if let note = Storage.instance?.getBy(fileName: query, exclude: note) {
+            fill(note: note)
+        } else {
+
+            guard let pc = UIApplication.shared.windows[0].rootViewController as? BasicViewController,
+                let vc = pc.containerController.viewControllers[0] as? ViewController
+            else { return }
+
+            if let index = pc.containerController.selectedIndex {
+                vc.shouldReturnToControllerIndex = index
             }
-            
-            self.editArea.selectedRange = NSMakeRange(characterIndex, 0)
+
+            pc.containerController.selectController(atIndex: 0, animated: true)
+
+            vc.search.text = query
+            vc.reloadNotesTable(with: SearchQuery(filter: query)) {
+                if vc.searchView.isHidden {
+                    vc.searchView.isHidden = false
+                }
+
+                vc.search.becomeFirstResponder()
+            }
         }
     }
-    
+
+    @objc private func imageTapHandler(_ sender: SingleImageTouchDownGestureRecognizer) {
+        guard let view = sender.view as? UITextView else { return }
+
+        let layoutManager = view.layoutManager
+        let location = sender.location(in: view)
+
+        var characterIndex = layoutManager.characterIndex(for: location, in: view.textContainer, fractionOfDistanceBetweenInsertionPoints: nil)
+
+        DispatchQueue.main.async {
+            view.becomeFirstResponder()
+
+            if sender.isRightBorderTap {
+                characterIndex += 1
+            }
+
+            view.selectedRange = NSRange(location: characterIndex, length: 0)
+        }
+    }
+
     private func isTodo(location: Int, textView: UITextView) -> Bool {
         let storage = textView.textStorage
 
@@ -976,11 +1556,31 @@ class EditorViewController: UIViewController, UITextViewDelegate {
         return false
     }
 
-    private func getShareButton() -> UIBarButtonItem {
+    public func getMoreButton() -> UIBarButtonItem {
+        let menuBtn = UIButton(type: .custom)
+        menuBtn.frame = CGRect(x: 0.0, y: 0.0, width: 32, height: 32)
+        let image = UIImage(named: "more_row_action")!.resize(maxWidthHeight: 32)?.imageWithColor(color1: .white)
+
+        menuBtn.setImage(image, for: .normal)
+        menuBtn.addTarget(self, action: #selector(clickOnButton), for: UIControl.Event.touchUpInside)
+
+        let menuBarItem = UIBarButtonItem(customView: menuBtn)
+        let currWidth = menuBarItem.customView?.widthAnchor.constraint(equalToConstant: 32)
+        currWidth?.isActive = true
+        let currHeight = menuBarItem.customView?.heightAnchor.constraint(equalToConstant: 32)
+        currHeight?.isActive = true
+
+        menuBarItem.tintColor = UIColor.white
+        return menuBarItem
+    }
+
+    public func getPreviewButton() -> UIBarButtonItem {
         let menuBtn = UIButton(type: .custom)
         menuBtn.frame = CGRect(x: 0.0, y: 0.0, width: 20, height: 20)
-        menuBtn.setImage(UIImage(named: "share"), for: .normal)
-        menuBtn.addTarget(self, action: #selector(share), for: UIControl.Event.touchUpInside)
+        let image = UIImage(named: "preview_editor_controller")!.imageWithColor(color1: .white)
+
+        menuBtn.setImage(image, for: .normal)
+        menuBtn.addTarget(self, action: #selector(preview), for: UIControl.Event.touchUpInside)
 
         let menuBarItem = UIBarButtonItem(customView: menuBtn)
         let currWidth = menuBarItem.customView?.widthAnchor.constraint(equalToConstant: 24)
@@ -993,20 +1593,200 @@ class EditorViewController: UIViewController, UITextViewDelegate {
     }
 
     @objc public func cancel() {
-        if let pageController = UIApplication.shared.windows[0].rootViewController as? PageViewController {
-            pageController.switchToList()
+        guard let bvc = UIApplication.shared.windows[0].rootViewController as? BasicViewController else { return }
+
+        bvc.containerController.selectController(atIndex: 0, animated: true)
+    }
+
+    @objc public func preview() {
+        guard let bvc = UIApplication.shared.windows[0].rootViewController as? BasicViewController
+        else { return }
+
+        UserDefaultsManagement.previewMode = true
+
+        editArea.endEditing(true)
+
+        UIApplication.getPVC()?.loadPreview()
+        bvc.containerController.selectController(atIndex: 2, animated: false)
+
+        // Handoff needs update in cursor position cahnged
+        userActivity?.needsSave = true
+    }
+
+    func textView(_ textView: UITextView, shouldInteractWith URL: URL, in characterRange: NSRange, interaction: UITextItemInteraction) -> Bool {
+
+        if URL.absoluteString.starts(with: "fsnotes://find?id=") {
+            if interaction == .invokeDefaultAction {
+                openWikiLink(query: URL.absoluteString)
+            }
+            return false
+        }
+
+        if URL.absoluteString.starts(with: "fsnotes://open/?tag=") {
+            if interaction == .invokeDefaultAction {
+                UIApplication.shared.open(URL, options: [:])
+            }
+//            if textView.isFirstResponder {
+//                UIApplication.shared.open(URL, options: [:])
+//            }
+
+            return false
+        }
+
+        if textView.isFirstResponder {
+            DispatchQueue.main.async {
+                textView.selectedRange = NSRange(location: characterRange.upperBound, length: 0)
+            }
+
+            if interaction == .presentActions {
+                let pathKey = NSAttributedString.Key(rawValue: "co.fluder.fsnotes.image.path")
+                if nil != textView.textStorage.attribute(pathKey, at: characterRange.location, effectiveRange: nil) {
+                    return false
+                }
+
+                return true
+            }
+
+            return false
+        }
+
+        // Skip images (fixes glitch bug)
+        let pathKey = NSAttributedString.Key(rawValue: "co.fluder.fsnotes.image.path")
+        let attr = textView.textStorage.attribute(pathKey, at: characterRange.location, effectiveRange: nil)
+        
+        if attr != nil && !textView.isFirstResponder {
+            return false
+        }
+
+        return true
+    }
+
+    func textView(_ textView: UITextView, shouldInteractWith textAttachment: NSTextAttachment, in characterRange: NSRange, interaction: UITextItemInteraction) -> Bool {
+        return false
+    }
+
+    func textViewDidEndEditing(_ textView: UITextView) {
+        initialKeyboardHeight = 0
+    }
+
+    private func restoreContentOffset() {
+        if let co = self.editArea.lastContentOffset {
+           self.editArea.lastContentOffset = nil
+           self.editArea.setContentOffset(co, animated: false)
+       }
+    }
+
+    public func saveContentOffset() {
+        if editArea != nil {
+            editArea.lastContentOffset = editArea.contentOffset
         }
     }
 
-    @objc public func share() {
-        guard
-            let pageController = UIApplication.shared.windows[0].rootViewController as? PageViewController,
-            let mvc = pageController.mainViewController,
-            let evc = pageController.editorViewController,
-            let note = evc.note
-        else { return }
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
 
-        mvc.notesTable.shareAction(note: note, presentController: evc)
+        guard UserDefaultsManagement.nightModeType == .system else { return }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            self.checkDarkMode()
+        }
     }
 
+    public func checkDarkMode() {
+        if #available(iOS 12.0, *) {
+            if traitCollection.userInterfaceStyle == .dark {
+                if NightNight.theme != .night {
+                    UIApplication.getVC().enableNightMode()
+                }
+            } else {
+                if NightNight.theme == .night {
+                    UIApplication.getVC().disableNightMode()
+                }
+            }
+        }
+    }
+
+    /*
+     Handoff methods
+     */
+    public func registerHandoff(for note: Note) {
+        let updateDict:  [String: String] = ["note-file-name": note.name]
+        let activity = NSUserActivity(activityType: "es.fsnot.handoff-open-note")
+        activity.isEligibleForHandoff = true
+        activity.addUserInfoEntries(from: updateDict)
+        activity.title = NSLocalizedString("Open note", comment: "Document opened")
+        self.userActivity = activity
+        self.userActivity?.becomeCurrent()
+    }
+
+    public func load(note: Note) {
+        let index = UserDefaultsManagement.previewMode ? 2 : 1
+        let evc = UIApplication.getEVC()
+        evc.editArea.resignFirstResponder()
+        evc.fill(note: note, clearPreview: true, enableHandoff: false) {
+            guard let bvc = UIApplication.shared.windows[0].rootViewController as? BasicViewController else {
+                return
+            }
+            bvc.containerController.selectController(atIndex: index, animated: true)
+        }
+    }
+
+    override func restoreUserActivityState(_ activity: NSUserActivity) {
+        guard let bvc = UIApplication.shared.windows[0].rootViewController as? BasicViewController else {
+            return
+        }
+
+        if let id = activity.userInfo?["kCSSearchableItemActivityIdentifier"] as? String {
+            let url = URL(fileURLWithPath: id)
+            if let note = Storage.shared().getBy(url: url) {
+                load(note: note)
+                return
+            } else {
+                UIApplication.getVC().restoreActivity = url
+            }
+        }
+
+        guard let name = activity.userInfo?["note-file-name"] as? String,
+            let position = activity.userInfo?["position"] as? String,
+            let state = activity.userInfo?["state"] as? String,
+            let note = Storage.sharedInstance().getBy(name: name)
+        else { return }
+
+        var index = 0
+        if state == "preview" {
+            UserDefaultsManagement.previewMode = true
+            index = 2
+        } else {
+            UserDefaultsManagement.previewMode = false
+            index = 1
+        }
+
+        let evc = UIApplication.getEVC()
+        evc.editArea.resignFirstResponder()
+
+        evc.fill(note: note, clearPreview: true, enableHandoff: false) {
+            bvc.containerController.selectController(atIndex: index, animated: true)
+
+            if let pos = Int(position), pos > -1, evc.editArea.textStorage.length >= pos {
+                evc.editArea.becomeFirstResponder()
+                evc.editArea.selectedRange = NSRange(location: pos, length: 0)
+            }
+        }
+    }
+
+    override func updateUserActivityState(_ activity: NSUserActivity) {
+        guard let note = EditTextView.note else { return }
+
+        let position =
+            editArea.isFirstResponder ? editArea.selectedRange.location : -1
+        let state = UserDefaultsManagement.previewMode ? "preview" : "editor"
+        let data =
+            [
+                "note-file-name": note.name,
+                "position": String(position),
+                "state": state
+            ]
+
+        activity.addUserInfoEntries(from: data)
+    }
 }

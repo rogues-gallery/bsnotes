@@ -11,7 +11,7 @@ import Cocoa
 class PreferencesAdvancedViewController: NSViewController {
     override func viewWillAppear() {
         super.viewWillAppear()
-        preferredContentSize = NSSize(width: 464, height: 440)
+        preferredContentSize = NSSize(width: 476, height: 440)
     }
 
     @IBOutlet weak var archivePathControl: NSPathControl!
@@ -33,7 +33,9 @@ class PreferencesAdvancedViewController: NSViewController {
                 UserDefaultsManagement.codeTheme = "monokai-sublime"
             } else if type == .System {
                 if #available(OSX 10.14, *) {
-                    if let appearance = NSApp.appearance, appearance.isDark {
+                    let mode = UserDefaults.standard.string(forKey: "AppleInterfaceStyle")
+
+                    if mode == "Dark" {
                         UserDefaultsManagement.codeTheme = "monokai-sublime"
                     }
                 }
@@ -55,7 +57,14 @@ class PreferencesAdvancedViewController: NSViewController {
             LanguageType(rawValue: 0x01),
             LanguageType(rawValue: 0x02),
             LanguageType(rawValue: 0x03),
-            LanguageType(rawValue: 0x04)
+            LanguageType(rawValue: 0x04),
+            LanguageType(rawValue: 0x05),
+            LanguageType(rawValue: 0x06),
+            LanguageType(rawValue: 0x07),
+            LanguageType(rawValue: 0x08),
+            LanguageType(rawValue: 0x09),
+            LanguageType(rawValue: 10),
+            LanguageType(rawValue: 11)
         ]
 
         for language in languages {
@@ -125,12 +134,11 @@ class PreferencesAdvancedViewController: NSViewController {
                     archive.url = url
                     storage.unload(project: archive)
                     storage.loadLabel(archive)
-                    storage.cacheMarkdown(project: archive)
 
                     vc.fsManager?.restart()
                     vc.notesTableView.reloadData()
-                    vc.storageOutlineView.reloadData()
-                    vc.storageOutlineView.selectArchive()
+                    vc.sidebarOutlineView.reloadData()
+                    vc.sidebarOutlineView.selectArchive()
                 }
             }
         }

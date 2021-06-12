@@ -9,20 +9,64 @@
 	<key>CFBundleDocumentTypes</key>
 	<array>
 		<dict>
+			<key>CFBundleTypeExtensions</key>
+			<array>
+				<string>textbundle</string>
+			</array>
 			<key>CFBundleTypeIconFiles</key>
 			<array>
 				<string>TextBundle.icns</string>
 			</array>
+			<key>CFBundleTypeMIMETypes</key>
+			<array>
+				<string>text/x-textbundle</string>
+			</array>
 			<key>CFBundleTypeName</key>
 			<string>TextBundle</string>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
 			<key>LSItemContentTypes</key>
 			<array>
-				<string>textbundle</string>
+				<string>org.textbundle.package</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeExtensions</key>
+			<array>
+				<string>md</string>
+				<string>markdown</string>
+				<string>mmd</string>
+				<string>multimarkdown</string>
+				<string>mdown</string>
+				<string>mkdn</string>
+				<string>mkd</string>
+				<string>mdwn</string>
+				<string>mdtxt</string>
+				<string>mdtext</string>
+				<string>mdml</string>
+			</array>
+			<key>CFBundleTypeMIMETypes</key>
+			<array>
+				<string>text/x-markdown</string>
+			</array>
+			<key>CFBundleTypeName</key>
+			<string>Markdown document</string>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>net.daringfireball.markdown</string>
 			</array>
 		</dict>
 	</array>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleGetInfoString</key>
+	<string></string>
 	<key>CFBundleIcons</key>
 	<dict/>
 	<key>CFBundleIcons~ipad</key>
@@ -36,7 +80,7 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>2.8.1</string>
+	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -77,10 +121,12 @@
 		</dict>
 	</array>
 	<key>CFBundleVersion</key>
-	<string>123</string>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.productivity</string>
 	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
 	<key>NSAppTransportSecurity</key>
 	<dict>
@@ -89,8 +135,14 @@
 	</dict>
 	<key>NSCameraUsageDescription</key>
 	<string>Needs for attach photo in notes</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Note encryption and decryption with FaceID</string>
+	<key>NSHumanReadableCopyright</key>
+	<string></string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Night Mode needs coordinate for calculate sunset/sunrise time</string>
+	<string>Requested when photo attached</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Needs permission to write images in photos app</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Needs for attach images in notes</string>
 	<key>NSUbiquitousContainers</key>
@@ -103,6 +155,10 @@
 			<string>One</string>
 		</dict>
 	</dict>
+	<key>NSUserActivityTypes</key>
+	<array>
+		<string>es.fsnot.handoff-open-note</string>
+	</array>
 	<key>UIAppFonts</key>
 	<array>
 		<string>SourceCodePro-Bold.ttf</string>
@@ -116,6 +172,8 @@
 		<string>fetch</string>
 		<string>remote-notification</string>
 	</array>
+	<key>UIFileSharingEnabled</key>
+	<true/>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
@@ -146,17 +204,40 @@
 			<string>TextBundle</string>
 			<key>UTTypeIconFiles</key>
 			<array>
-				<string>TextBundle</string>
+				<string>TextBundle.icns</string>
 			</array>
 			<key>UTTypeIdentifier</key>
 			<string>org.textbundle.package</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
-				<string>textbundle</string>
+				<array>
+					<string>textbundle</string>
+				</array>
 			</dict>
 		</dict>
-		<dict/>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Markdown</string>
+			<key>UTTypeIconFiles</key>
+			<array>
+				<string>Markdown.icns</string>
+			</array>
+			<key>UTTypeIdentifier</key>
+			<string>net.daringfireball.markdown</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>md</string>
+					<string>markdown</string>
+				</array>
+			</dict>
+		</dict>
 	</array>
 </dict>
 </plist>

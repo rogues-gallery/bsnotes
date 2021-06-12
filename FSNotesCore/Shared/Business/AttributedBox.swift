@@ -30,44 +30,72 @@ class AttributedBox {
 
     public static func getCleanUnchecked() -> NSMutableAttributedString {
         let font = NotesTextProcessor.font
-        let height = font.lineHeight + 5
-        let image = getImage(name: "checkbox_empty")
-
+        let size = font.pointSize + font.pointSize / 2
+        var image: Image
         let attachment = NSTextAttachment()
-        attachment.image = image
-        let mid = font.descender + font.capHeight
-        attachment.bounds = CGRect(
-            x: 0,
-            y: font.descender - height / 2 + mid + 2,
-            width: height,
-            height: height
-            ).integral
+
+        if #available(OSX 10.13, iOS 10.0, *) {
+            let image = getImage(name: "checkbox_empty")
+            attachment.image = image
+        } else {
+        #if os(OSX)
+            image = NSImage(named: "checkbox_empty1012.png")!.resize(to: CGSize(width: size, height: size))!
+            let cell = NSTextAttachmentCell(imageCell: image)
+            attachment.attachmentCell = cell
+        #endif
+        }
+
+        attachment.bounds = CGRect(x: CGFloat(0), y: (font.capHeight - size) / 2, width: size, height: size)
 
         let checkboxText = NSMutableAttributedString(attributedString: NSAttributedString(attachment: attachment))
 
         checkboxText.addAttribute(.todo, value: 0, range: NSRange(0..<1))
+
+        if #available(OSX 10.13, iOS 10.0, *) {
+        } else {
+            let offset = (font.capHeight - size) / 2
+            checkboxText.addAttribute(.baselineOffset, value: offset, range: NSRange(0..<1))
+        }
+
+        let parStyle = NSMutableParagraphStyle()
+        parStyle.lineSpacing = CGFloat(UserDefaultsManagement.editorLineSpacing)
+        checkboxText.addAttribute(.paragraphStyle, value: parStyle, range: NSRange(0..<1))
 
         return checkboxText
     }
 
     public static func getCleanChecked() -> NSMutableAttributedString {
         let font = NotesTextProcessor.font
-        let height = font.lineHeight + 5
-        let image = getImage(name: "checkbox")
-
+        let size = font.pointSize + font.pointSize / 2
+        var image: Image
         let attachment = NSTextAttachment()
-        attachment.image = image
-        let mid = font.descender + font.capHeight
-        attachment.bounds = CGRect(
-            x: 0,
-            y: font.descender - height / 2 + mid + 2,
-            width: height,
-            height: height
-            ).integral
+
+        if #available(OSX 10.13, iOS 10.0, *) {
+            image = getImage(name: "checkbox")
+            attachment.image = image
+        } else {
+        #if os(OSX)
+            image = NSImage(named: "checkbox1012.png")!.resize(to: CGSize(width: size, height: size))!
+            let cell = NSTextAttachmentCell(imageCell: image)
+            attachment.attachmentCell = cell
+        #endif
+        }
+
+        attachment.bounds = CGRect(x: CGFloat(0), y: (font.capHeight - size) / 2, width: size, height: size)
 
         let checkboxText = NSMutableAttributedString(attributedString: NSAttributedString(attachment: attachment))
 
         checkboxText.addAttribute(.todo, value: 1, range: NSRange(0..<1))
+
+        if #available(OSX 10.13, iOS 10.0, *) {
+        } else {
+            let offset = (font.capHeight - size) / 2
+            checkboxText.addAttribute(.baselineOffset, value: offset, range: NSRange(0..<1))
+        }
+
+        let parStyle = NSMutableParagraphStyle()
+        parStyle.lineSpacing = CGFloat(UserDefaultsManagement.editorLineSpacing)
+        checkboxText.addAttribute(.paragraphStyle, value: parStyle, range: NSRange(0..<1))
 
         return checkboxText
     }
@@ -77,7 +105,11 @@ class AttributedBox {
 
         #if os(OSX)
             if name == "checkbox" {
-                name = "checkbox_flipped"
+                if #available(OSX 10.15, *) {
+                    name = "checkbox_new"
+                } else {
+                    name = "checkbox_flipped"
+                }
             }
             return NSImage(named: name)!
         #else

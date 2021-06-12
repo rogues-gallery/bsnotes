@@ -30,19 +30,21 @@ class MoveViewController: UITableViewController {
         navigationController?.navigationBar.mixedTitleTextAttributes = [NNForegroundColorAttributeName: Colors.titleText]
         navigationController?.navigationBar.mixedBarTintColor = Colors.Header
 
-        view.mixedBackgroundColor = MixedColor(normal: 0xffffff, night: 0x2e2c32)
+        view.mixedBackgroundColor = MixedColor(normal: 0xffffff, night: 0x000000)
 
         self.navigationItem.leftBarButtonItem = Buttons.getBack(target: self, selector: #selector(cancel))
 
         self.navigationItem.rightBarButtonItem = Buttons.getAdd(target: self, selector: #selector(newAlert))
 
         self.projects = Storage.sharedInstance().getProjects()
-        self.title = "Move"
+        self.title = NSLocalizedString("Move", comment: "Move view")
 
         super.viewDidLoad()
     }
 
     override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+        guard let vc = notesTableView.viewDelegate else { return }
+
         if let projects = self.projects {
             let project = projects[indexPath.row]
 
@@ -50,10 +52,16 @@ class MoveViewController: UITableViewController {
                 let dstURL = project.url.appendingPathComponent(note.name)
 
                 if note.project != project {
+                    note.moveImages(to: project)
+
+                    vc.sidebarTableView.removeTags(in: [note])
+                    
                     guard note.move(to: dstURL) else {
-                        let alert = UIAlertController(title: "Oops 👮‍♂️", message: "File with this name already exist", preferredStyle: UIAlertController.Style.alert)
+                        let alert = UIAlertController(title: "Oops 👮‍♂️", message: NSLocalizedString("File with this name already exist", comment: ""), preferredStyle: UIAlertController.Style.alert)
                         alert.addAction(UIAlertAction(title: "OK", style: UIAlertAction.Style.default, handler: nil))
                         self.present(alert, animated: true, completion: nil)
+                        
+                        note.moveImages(to: note.project)
                         return
                     }
 
@@ -61,8 +69,8 @@ class MoveViewController: UITableViewController {
                     note.parseURL()
                     note.project = project
 
-                    self.notesTableView.removeByNotes(notes: [note])
-                    self.notesTableView.viewDelegate?.notesTable.insertRow(note: note)
+                    self.notesTableView.removeRows(notes: [note])
+                    vc.notesTable.insertRows(notes: [note])
                 }
             }
             
@@ -98,7 +106,7 @@ class MoveViewController: UITableViewController {
     }
 
     override func tableView(_ tableView: UITableView, willDisplay cell: UITableViewCell, forRowAt indexPath: IndexPath) {
-        cell.mixedBackgroundColor = MixedColor(normal: 0xffffff, night: 0x2e2c32)
+        cell.mixedBackgroundColor = MixedColor(normal: 0xffffff, night: 0x000000)
         cell.textLabel?.mixedTextColor = MixedColor(normal: 0x000000, night: 0xffffff)
 
         if selectedNotes.count == 1 {
@@ -112,7 +120,7 @@ class MoveViewController: UITableViewController {
     }
 
     @objc func newAlert() {
-        let alertController = UIAlertController(title: "Folder name:", message: nil, preferredStyle: .alert)
+        let alertController = UIAlertController(title: NSLocalizedString("Folder name:", comment: ""), message: nil, preferredStyle: .alert)
 
         alertController.addTextField { (textField) in
             textField.placeholder = ""
@@ -124,7 +132,7 @@ class MoveViewController: UITableViewController {
             }
 
             guard let allProjects = self.projects, allProjects.first(where: { $0.label == name } ) == nil else {
-                let alert = UIAlertController(title: "Oops 👮‍♂️", message: "Folder with this name already exist", preferredStyle: UIAlertController.Style.alert)
+                let alert = UIAlertController(title: "Oops 👮‍♂️", message: NSLocalizedString("Folder with this name already exist", comment: ""), preferredStyle: UIAlertController.Style.alert)
                 alert.addAction(UIAlertAction(title: "OK", style: UIAlertAction.Style.default, handler: nil))
 
                 self.present(alert, animated: true, completion: nil)
@@ -140,18 +148,30 @@ class MoveViewController: UITableViewController {
                 return
             }
 
-            let project = Project(url: newDir, label: name, isTrash: false, isRoot: false, parent: allProjects[0], isDefault: false, isArchive: false)
+            let storage = Storage.shared()
+
+            let project = Project(
+                storage: storage,
+                url: newDir,
+                label: name,
+                isTrash: false,
+                isRoot: false,
+                parent: allProjects[0],
+                isDefault: false,
+                isArchive: false
+            )
 
             self.projects?.append(project)
             self.tableView.reloadData()
 
-            Storage.sharedInstance().add(project: project)
+            storage.assignTree(for: project)
 
-            self.notesTableView.viewDelegate?.sidebarTableView.sidebar = Sidebar()
-            self.notesTableView.viewDelegate?.sidebarTableView.reloadData()
+            if let vc = self.notesTableView.viewDelegate {
+                vc.sidebarTableView.insertRows(projects: [project])
+            }
         }
 
-        let cancelAction = UIAlertAction(title: "Cancel", style: .cancel) { (_) in }
+        let cancelAction = UIAlertAction(title: NSLocalizedString("Cancel", comment: ""), style: .cancel) { (_) in }
 
         alertController.addAction(confirmAction)
         alertController.addAction(cancelAction)

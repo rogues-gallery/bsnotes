@@ -8,8 +8,9 @@
 
 import UIKit
 import NightNight
+import SwipeCellKit
 
-class NoteCellView: UITableViewCell {
+class NoteCellView: SwipeTableViewCell {
     @IBOutlet weak var title: UILabel!
     @IBOutlet weak var date: UILabel!
     @IBOutlet weak var preview: UILabel!
@@ -46,6 +47,12 @@ class NoteCellView: UITableViewCell {
         note = nil
     }
 
+    public func reLoad() {
+        if let note = self.note {
+            configure(note: note)
+        }
+    }
+
     func configure(note: Note) {
         self.note = note
 
@@ -69,18 +76,15 @@ class NoteCellView: UITableViewCell {
         }
 
         if let font = UserDefaultsManagement.noteFont {
-            if #available(iOS 11.0, *) {
-                let fontMetrics = UIFontMetrics(forTextStyle: .headline)
-                let scaledFont = fontMetrics.scaledFont(for: font)
-                title.font = scaledFont
-                date.font = scaledFont
-            }
+            let fontMetrics = UIFontMetrics(forTextStyle: .headline)
+            let scaledFont = fontMetrics.scaledFont(for: font)
+            title.font = scaledFont
+            date.font = scaledFont
         }
     }
 
     public func getDate() -> String {
-        if let sidebarItem = UIApplication.getVC().sidebarTableView.getSidebarItem(),
-            let sort = sidebarItem.project?.sortBy,
+        if let sort = note?.project.sortBy,
             sort == .creationDate,
             let date = note?.getCreationDateForLabel()
         {
@@ -127,9 +131,13 @@ class NoteCellView: UITableViewCell {
     }
 
     public func getPreviewImage(imageUrl: URL, note: Note) -> Image? {
-        let tempURL = URL(fileURLWithPath: NSTemporaryDirectory())
+        let tempURL = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("MainNotesList")
 
-        if let cacheName = imageUrl.absoluteString.addingPercentEncoding(withAllowedCharacters: .urlHostAllowed) {
+        if !FileManager.default.fileExists(atPath: tempURL.path) {
+            try? FileManager.default.createDirectory(at: tempURL, withIntermediateDirectories: false, attributes: nil)
+        }
+
+        if let cacheName = imageUrl.absoluteString.addingPercentEncoding(withAllowedCharacters: .urlHostAllowed)?.md5 {
 
             let file = tempURL.appendingPathComponent(cacheName)
             if FileManager.default.fileExists(atPath: file.path) {

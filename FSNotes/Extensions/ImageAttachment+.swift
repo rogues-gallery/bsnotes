@@ -7,47 +7,35 @@
 //
 
 import Cocoa
+import AVKit
 
-extension ImageAttachment {
+extension NoteAttachment {
     public func load() -> NSTextAttachment? {
+        guard let container = ViewController.shared()?.editArea.textContainer else { return nil }
+
         let attachment = NSTextAttachment()
-        
-        let operation = BlockOperation()
-        operation.addExecutionBlock {
-            guard self.note == EditTextView.note else { return }
-            usleep(useconds_t(80000))
-            guard self.note == EditTextView.note else { return }
 
-            let imageSize = self.getSize(url: self.url)
-            let size = self.getSize(width: imageSize.width, height: imageSize.height)
+        let imageSize = getSize(url: self.url)
+        var size = self.getSize(width: imageSize.width, height: imageSize.height)
 
-            if self.note != EditTextView.note { return }
+        if url.isImage {
+            let cell = FSNTextAttachmentCell(textContainer: container, image: NSImage(size: size))
+            cell.image?.size = size
+            attachment.image = nil
+            attachment.attachmentCell = cell
+            attachment.bounds = NSRect(x: 0, y: 0, width: size.width, height: size.height)
 
-            if let imageData = try? Data(contentsOf: self.url) {
-                self.cache(data: imageData)
+        } else {
+            size = NSSize(width: 35, height: 35)
 
-                let image = Image(data: imageData)
-                let fileWrapper = FileWrapper.init(regularFileWithContents: imageData)
-                fileWrapper.preferredFilename = "\(self.title)@::\(self.url.path)"
-
-                let resizedImage = image?.resized(to: size)
-                if self.note != EditTextView.note { return }
-
-                DispatchQueue.main.async {
-                    let cell = NSTextAttachmentCell(imageCell: resizedImage)
-                    attachment.fileWrapper = fileWrapper
-                    //attachment.fileType = kUTTypeJPEG as String
-                    attachment.attachmentCell = cell
-
-                    if let view = self.getEditorView(), let invalidateRange =  self.invalidateRange, self.note == EditTextView.note {
-                        view.layoutManager?.invalidateLayout(forCharacterRange: invalidateRange, actualCharacterRange: nil)
-                        view.layoutManager?.invalidateDisplay(forCharacterRange: invalidateRange)
-                    }
-                }
+            if let image = NSImage(named: "file") {
+                let cell = FSNTextAttachmentCell(textContainer: container, image: image)
+                cell.image?.size = size
+                attachment.image = nil
+                attachment.attachmentCell = cell
+                attachment.bounds = NSRect(x: 0, y: 0, width: size.width, height: size.height)
             }
         }
-
-        EditTextView.imagesLoaderQueue.addOperation(operation)
 
         return attachment
     }
@@ -77,40 +65,33 @@ extension ImageAttachment {
         return size
     }
 
-    public static func getImageAndCacheData(url: URL, note: Note) -> Image? {
-        var data: Data?
+    public static func getImage(url: URL, size: CGSize) -> NSImage? {
+        let imageData = try? Data(contentsOf: url)
+        var finalImage: NSImage?
 
-        let cacheDirectoryUrl = note.project.url.appendingPathComponent("/.cache/")
-
-        if url.isRemote() || url.pathExtension.lowercased() == "png", let cacheName = url.absoluteString.addingPercentEncoding(withAllowedCharacters: .urlHostAllowed) {
-
-            let imageCacheUrl = cacheDirectoryUrl.appendingPathComponent(cacheName)
-
-            if !FileManager.default.fileExists(atPath: imageCacheUrl.path) {
-                var isDirectory = ObjCBool(true)
-                if !FileManager.default.fileExists(atPath: cacheDirectoryUrl.path, isDirectory: &isDirectory) || isDirectory.boolValue == false {
-                    do {
-                        try FileManager.default.createDirectory(at: imageCacheUrl.deletingLastPathComponent(), withIntermediateDirectories: false, attributes: nil)
-                    } catch {
-                        print(error)
-                    }
-                }
-
-                do {
-                    data = try Data(contentsOf: url)
-                } catch {
-                    print(error)
-                }
-
-            } else {
-                data = try? Data(contentsOf: imageCacheUrl)
+        if url.isVideo {
+            let asset = AVURLAsset(url: url, options: nil)
+            let imgGenerator = AVAssetImageGenerator(asset: asset)
+            if let cgImage = try? imgGenerator.copyCGImage(at: CMTimeMake(value: 0, timescale: 1), actualTime: nil) {
+                finalImage = NSImage(cgImage: cgImage, size: size)
             }
-        } else {
-            data = try? Data(contentsOf: url)
+        } else if let imageData = imageData {
+            finalImage = NSImage(data: imageData)
         }
 
-        guard let imageData = data else { return nil }
+        guard let image = finalImage else { return nil }
+        var thumbImage: NSImage?
+        thumbImage = finalImage
 
-        return Image(data: imageData)
+        if let cacheURL = self.getCacheUrl(from: url, prefix: "ThumbnailsBig"), FileManager.default.fileExists(atPath: cacheURL.path) {
+            thumbImage = NSImage(contentsOfFile: cacheURL.path)
+        } else if
+            let resizedImage = image.resized(to: size) {
+            thumbImage = resizedImage
+
+            self.savePreviewImage(url: url, image: resizedImage, prefix: "ThumbnailsBig")
+        }
+
+        return thumbImage
     }
 }

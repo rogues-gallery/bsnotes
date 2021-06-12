@@ -46,7 +46,7 @@ extension UIFont {
     }
     
     public static func bodySize() -> UIFont {
-        if #available(iOS 11.0, *) {
+        if #available(iOS 11.0, *), UserDefaultsManagement.dynamicTypeFont {
             let fontMetrics = UIFontMetrics(forTextStyle: .body)
             let font = fontMetrics.scaledFont(for: UserDefaultsManagement.noteFont)
             
@@ -70,4 +70,13 @@ extension UIFont {
 
         return font
     }
+
+    static func addItalic(font: UIFont) -> UIFont {
+        return font.italic()
+    }
+
+    static func addBold(font: UIFont) -> UIFont {
+        return font.bold()
+    }
+
 }

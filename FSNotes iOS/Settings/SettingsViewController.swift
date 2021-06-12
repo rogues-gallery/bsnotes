@@ -8,38 +8,96 @@
 
 import UIKit
 import NightNight
+import StoreKit
 
 class SettingsViewController: UITableViewController, UIGestureRecognizerDelegate, UIDocumentPickerDelegate {
-    
-    var sections = ["General", "Editor", "UI", "Storage", "FSNotes"]
-    var rows = [
-        ["Default Extension", "Default Container", "Default Keyboard In Editor"],
-        ["Code block live highlighting", "Live images preview"],
-        ["Font", "Night Mode"],
-        ["Projects", "Import notes"],
-        ["Support", "Homepage", "Twitter"]
+
+    var sections = [
+        NSLocalizedString("General", comment: "Settings"),
+        NSLocalizedString("UI", comment: "Settings"),
+        NSLocalizedString("Storage", comment: "Settings"),
+        "FSNotes"
     ]
 
-    var rowsInSection = [3, 2, 2, 2, 3]
+    var rows = [
+        [
+            NSLocalizedString("Extension", comment: "Settings"),
+            NSLocalizedString("Container", comment: "Settings"),
+            NSLocalizedString("Default Keyboard In Editor", comment: "Settings"),
+            NSLocalizedString("Files Naming", comment: "Settings"),
+            NSLocalizedString("Editor", comment: "Settings")
+        ], [
+            NSLocalizedString("Font", comment: "Settings"),
+            NSLocalizedString("Night Mode", comment: "Settings")
+        ], [
+            NSLocalizedString("Projects", comment: "Settings"),
+            NSLocalizedString("Import notes", comment: "Settings")
+        ], [
+            NSLocalizedString("Support", comment: "Settings"),
+            NSLocalizedString("Homepage", comment: "Settings"),
+            NSLocalizedString("Twitter", comment: "Settings"),
+            NSLocalizedString("Rate FSNotes", comment: "Settings")
+        ]
+    ]
+
+    var icons = [
+        [
+            "settings-icons-format",
+            "settings-icons-container",
+            "settings-icons-keyboard",
+            "settings-icons-naming",
+            "settings-icons-editor"
+        ], [
+            "settings-icons-font",
+            "settings-icons-night"
+        ], [
+            "settings-icons-projects",
+            "settings-icons-import"
+        ], [
+            "settings-icons-support",
+            "settings-icons-home",
+            "settings-icons-twitter",
+            "settings-icons-rate"
+        ]
+    ]
+
+    var rowsInSection = [5, 2, 2, 4]
     private var prevCount = 0
         
     override func viewDidLoad() {
-        view.mixedBackgroundColor = MixedColor(normal: 0xfafafa, night: 0x2e2c32)
+        view.mixedBackgroundColor = MixedColor(normal: 0xfafafa, night: 0x000000)
         
         navigationController?.navigationBar.mixedTitleTextAttributes = [NNForegroundColorAttributeName: Colors.titleText]
         navigationController?.navigationBar.mixedBarTintColor = Colors.Header
         navigationController?.interactivePopGestureRecognizer?.delegate = self
 
-
         super.viewDidLoad()
         
-        self.title = "Settings"
+        self.title = NSLocalizedString("Settings", comment: "Sidebar settings")
 
         self.navigationItem.leftBarButtonItem = Buttons.getBack(target: self, selector: #selector(done))
+
+        let version = UILabel(frame: CGRect(x: 8, y: 30, width: tableView.frame.width, height: 60))
+        version.mixedBackgroundColor = MixedColor(normal: 0xffffff, night: 0x000000)
+        version.font = version.font.withSize(17).bold()
+
+        if let versionString = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
+            let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String {
+            version.text =
+                NSLocalizedString("Version", comment: "Settings")
+                + " \(versionString) "
+                + NSLocalizedString("build", comment: "Settings")
+                + " \(build)"
+        }
+
+        version.textColor = UIColor.lightGray
+        version.textAlignment = .center
+
+        tableView.tableFooterView = version
     }
 
     override func numberOfSections(in tableView: UITableView) -> Int {
-        return 5
+        return 4
     }
     
     override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
@@ -55,41 +113,42 @@ class SettingsViewController: UITableViewController, UIGestureRecognizerDelegate
     }
     
     override func tableView(_ tableView: UITableView, willDisplay cell: UITableViewCell, forRowAt indexPath: IndexPath) {
-        cell.mixedBackgroundColor = MixedColor(normal: 0xffffff, night: 0x2e2c32)
+        cell.mixedBackgroundColor = MixedColor(normal: 0xffffff, night: 0x000000)
         cell.textLabel?.mixedTextColor = MixedColor(normal: 0x000000, night: 0xffffff)
     }
     
     override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        let cell = UITableViewCell()
-        
+
+        var cell = UITableViewCell()
+        if indexPath.section == 0x02 && indexPath.row == 0x01 {
+            cell = UITableViewCell(style: .subtitle, reuseIdentifier: nil)
+        }
+
         let view = UIView()
+        let iconName = icons[indexPath.section][indexPath.row]
         view.mixedBackgroundColor = MixedColor(normal: 0xe2e5e4, night: 0x686372)
         cell.selectedBackgroundView = view
         cell.textLabel?.text = rows[indexPath.section][indexPath.row]
-        
+        cell.imageView?.image = image(UIImage(named: iconName)!, withSize: CGSize(width: 40, height: 40))
+
         if indexPath.section == 0x00 {
             switch indexPath.row {
             case 0:
                 cell.accessoryType = .disclosureIndicator
             case 1:
                 cell.accessoryType = .disclosureIndicator
+            case 2:
+                cell.accessoryType = .disclosureIndicator
+            case 3:
+                cell.accessoryType = .disclosureIndicator
+            case 4:
+                cell.accessoryType = .disclosureIndicator
             default:
                 return cell
             }
         }
-        
+                
         if indexPath.section == 0x01 {
-            switch indexPath.row {
-            case 0:
-                cell.accessoryType = UserDefaultsManagement.codeBlockHighlight ? .checkmark : .none
-            case 1:
-                cell.accessoryType = UserDefaultsManagement.liveImagesPreview ? .checkmark : .none
-            default:
-                return cell
-            }
-        }
-        
-        if indexPath.section == 0x02 {
             switch indexPath.row {
             case 0:
                 cell.accessoryType = .disclosureIndicator
@@ -100,16 +159,29 @@ class SettingsViewController: UITableViewController, UIGestureRecognizerDelegate
             }
         }
 
-        if indexPath.section == 0x03 {
+        if indexPath.section == 0x02 {
             switch indexPath.row {
             case 0:
                 cell.accessoryType = .disclosureIndicator
+            case 1:
+                cell.detailTextLabel?.mixedTextColor = MixedColor(normal: 0x000000, night: 0xffffff)
+                cell.detailTextLabel?.numberOfLines = 0
+                cell.detailTextLabel?.lineBreakMode = .byWordWrapping
+                cell.detailTextLabel?.text = NSLocalizedString("Compatible with DayOne JSON (zip), Bear and Ulysses (textbundle), markdown, txt, rtf.", comment: "")
             default:
                 return cell
             }
         }
 
         return cell
+    }
+
+    private func image( _ image:UIImage, withSize newSize:CGSize) -> UIImage {
+        UIGraphicsBeginImageContextWithOptions(newSize, false, UIScreen.main.scale)
+        image.draw(in: CGRect(x: 0,y: 0,width: newSize.width,height: newSize.height))
+        let newImage = UIGraphicsGetImageFromCurrentImageContext()
+        UIGraphicsEndImageContext()
+        return newImage!.withRenderingMode(.automatic)
     }
     
     override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
@@ -123,29 +195,16 @@ class SettingsViewController: UITableViewController, UIGestureRecognizerDelegate
                 lvc = DefaultContainerViewController()
             case 2:
                 lvc = LanguageViewController()
+            case 3:
+                lvc = NamingViewController()
+            case 4:
+                lvc = SettingsEditorViewController()
             default:
                 return
             }
         }
         
         if indexPath.section == 0x01 {
-            if let cell = tableView.cellForRow(at: indexPath) {
-                if cell.accessoryType == .none {
-                    cell.accessoryType = .checkmark
-                    
-                } else {
-                    cell.accessoryType = .none
-                }
-                
-                if indexPath.row == 1 {
-                    UserDefaultsManagement.liveImagesPreview = (cell.accessoryType == .checkmark)
-                } else {
-                    UserDefaultsManagement.codeBlockHighlight = (cell.accessoryType == .checkmark)
-                }
-            }
-        }
-        
-        if indexPath.section == 0x02 {
             switch indexPath.row {
             case 0:
                 lvc = FontViewController()
@@ -156,7 +215,7 @@ class SettingsViewController: UITableViewController, UIGestureRecognizerDelegate
             }
         }
 
-        if indexPath.section == 0x03 {
+        if indexPath.section == 0x02 {
             switch indexPath.row {
             case 0:
                 lvc = ProjectsViewController()
@@ -174,7 +233,7 @@ class SettingsViewController: UITableViewController, UIGestureRecognizerDelegate
             }
         }
 
-        if indexPath.section == 0x04 {
+        if indexPath.section == 0x03 {
             var url: URL?
 
             switch indexPath.row {
@@ -187,14 +246,15 @@ class SettingsViewController: UITableViewController, UIGestureRecognizerDelegate
             case 0x02:
                 url = URL(string: "https://twitter.com/fsnotesapp")
                 break
+            case 0x03:
+                SKStoreReviewController.requestReview()
+                break
             default: break
             }
 
             if let url = url {
                 UIApplication.shared.open(url, options: [:], completionHandler: nil)
             }
-
-            tableView.deselectRow(at: indexPath, animated: false)
         }
         
         if let controller = lvc {
@@ -202,46 +262,24 @@ class SettingsViewController: UITableViewController, UIGestureRecognizerDelegate
         }
     }
 
+    override func tableView(_ tableView: UITableView, viewForHeaderInSection section: Int) -> UIView? {
+        let headerView = UIView(frame: CGRect(x: 25, y: 7, width: view.frame.size.width, height: 50))
 
-    override func tableView(_ tableView: UITableView, heightForFooterInSection section: Int) -> CGFloat {
-        if section == 4 || section == 3 {
-            return 65
-        }
+        // add label
+        let label = UILabel(frame: CGRect(x: 25, y: 7, width: headerView.frame.size.width, height: 50))
+        label.text = sections[section]
+        label.mixedTextColor = MixedColor(normal: 0x000000, night: 0xffffff)
+        headerView.addSubview(label)
 
-        return 0
-    }
 
-    override func tableView(_ tableView: UITableView, viewForFooterInSection section: Int) -> UIView? {
-        guard self.sections[section] == "FSNotes" || self.sections[section] == "Storage" else { return nil }
+        // bottom border
+        let borderBottom = CALayer()
+        borderBottom.mixedBackgroundColor = MixedColor(normal: 0xcdcdcf, night: 0x19191a)
+        borderBottom.frame = CGRect(x: 0, y: 49.5, width: headerView.frame.size.width, height: 0.5)
+        headerView.layer.addSublayer(borderBottom)
 
-        let tableViewFooter = UIView(frame: CGRect(x: 0, y: 0, width: tableView.frame.width, height: 50))
-
-        if self.sections[section] == "FSNotes" {
-            let version = UILabel(frame: CGRect(x: 8, y: 15, width: tableView.frame.width, height: 30))
-            version.font = version.font.withSize(17).bold()
-
-            if let versionString = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
-                let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String {
-                version.text = "Version \(versionString) build \(build)"
-            }
-
-            version.textColor = UIColor.lightGray
-            version.textAlignment = .center
-            tableViewFooter.addSubview(version)
-            return tableViewFooter
-        }
-
-        if self.sections[section] == "Storage" {
-            let label = UILabel(frame: CGRect(x: 20, y: 0, width: tableView.frame.width - 20, height: 60))
-            label.font = label.font.withSize(15)
-            label.text = "Compatible with DayOne JSON (zip), Bear and Ulysses (textbundle), markdown, txt, rtf."
-            label.textColor = UIColor.lightGray
-            label.numberOfLines = 2
-            tableViewFooter.addSubview(label)
-            return tableViewFooter
-        }
-
-        return nil
+        headerView.mixedBackgroundColor = MixedColor(normal: 0xffffff, night: 0x000000)
+        return headerView
     }
 
     func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
@@ -269,17 +307,19 @@ class SettingsViewController: UITableViewController, UIGestureRecognizerDelegate
 
             let indicator = UIActivityIndicatorView(style: UIActivityIndicatorView.Style.whiteLarge)
             viewController.configureIndicator(indicator: indicator, view: self.tableView)
+            viewController.startAnimation(indicator: indicator)
 
             self.view.isUserInteractionEnabled = false
 
             DispatchQueue.global().async {
                 let helper = DayOneImportHelper(url: url, storage: storage)
-                let project = helper.check()
+                guard let project = helper.check() else { return }
 
                 DispatchQueue.main.async {
                     self.view.isUserInteractionEnabled = true
 
-                    viewController.reloadSidebar(select: project)
+                    viewController.sidebarTableView.insertRows(projects: [project])
+                    viewController.sidebarTableView.select(project: project)
                     viewController.stopAnimation(indicator: indicator)
 
                     self.done()
@@ -296,5 +336,27 @@ class SettingsViewController: UITableViewController, UIGestureRecognizerDelegate
 
     @objc func done() {
         self.dismiss(animated: true, completion: nil)
+    }
+
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        guard UserDefaultsManagement.nightModeType == .system else { return }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            self.checkDarkMode()
+        }
+    }
+
+    public func checkDarkMode() {
+        if #available(iOS 12.0, *) {
+            if traitCollection.userInterfaceStyle == .dark {
+                if NightNight.theme != .night {
+                    UIApplication.getVC().enableNightMode()
+                }
+            } else {
+                if NightNight.theme == .night {
+                    UIApplication.getVC().disableNightMode()
+                }
+            }
+        }
     }
 }

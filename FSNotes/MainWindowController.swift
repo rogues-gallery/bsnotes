@@ -12,7 +12,9 @@ import AppKit
 class MainWindowController: NSWindowController, NSWindowDelegate {
     let notesListUndoManager = UndoManager()
     var editorUndoManager = UndoManager()
-    
+
+    public var lastWindowSize: NSRect? = nil
+
     override func windowDidLoad() {
         let appDelegate = NSApplication.shared.delegate as! AppDelegate
         appDelegate.mainWindowController = self
@@ -37,7 +39,7 @@ class MainWindowController: NSWindowController, NSWindowDelegate {
     func refreshEditArea(focusSearch: Bool = false) {
         guard let vc = ViewController.shared() else { return }
 
-        if vc.storageOutlineView.isFirstLaunch || focusSearch {
+        if vc.sidebarOutlineView.isFirstLaunch || focusSearch {
             vc.search.window?.makeFirstResponder(vc.search)
         } else {
             vc.focusEditArea()
@@ -70,5 +72,28 @@ class MainWindowController: NSWindowController, NSWindowDelegate {
         }
 
         return nil
+    }
+
+    func windowDidEnterFullScreen(_ notification: Notification) {
+        UserDefaultsManagement.fullScreen = true
+    }
+
+    func windowDidExitFullScreen(_ notification: Notification) {
+        UserDefaultsManagement.fullScreen = false
+    }
+
+    public func maximizeWindow() {
+        let currentSize = window?.frame
+        
+        if let screen = NSScreen.main {
+            let size = lastWindowSize ?? screen.visibleFrame
+            window?.setFrame(size, display: true, animate: true)
+
+            if lastWindowSize == nil {
+                lastWindowSize = currentSize
+            } else {
+                lastWindowSize = nil
+            }
+        }
     }
 }

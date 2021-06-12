@@ -18,7 +18,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var statusItem: NSStatusItem?
 
     public var urls: [URL]? = nil
-    public var searchQuery: String? = nil
+    public var searchQuery: URL? = nil
     public var newName: String? = nil
     public var newContent: String? = nil
 
@@ -28,6 +28,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func applicationWillFinishLaunching(_ notification: Notification) {
+        checkStorageChanges()
         loadDockIcon()
         
         if UserDefaultsManagement.showInMenuBar {
@@ -44,7 +45,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         let storage = Storage.sharedInstance()
         storage.loadProjects()
-        storage.loadDocuments() {}
+        storage.loadDocuments()
     }
 
     func applicationDidFinishLaunching(_ aNotification: Notification) {
@@ -55,7 +56,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         applyAppearance()
 
         #if CLOUDKIT
-        if let iCloudDocumentsURL = FileManager.default.url(forUbiquityContainerIdentifier: nil)?.appendingPathComponent("Documents").resolvingSymlinksInPath() {
+        if let iCloudDocumentsURL = FileManager.default.url(forUbiquityContainerIdentifier: nil)?.appendingPathComponent("Documents").standardized {
             
             if (!FileManager.default.fileExists(atPath: iCloudDocumentsURL.path, isDirectory: nil)) {
                 do {
@@ -71,7 +72,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self.requestStorageDirectory()
             return
         }
-        
+
         let storyboard = NSStoryboard(name: "Main", bundle: nil)
         
         guard let mainWC = storyboard.instantiateController(withIdentifier: "MainWindowController") as? MainWindowController else {
@@ -94,11 +95,24 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         let webkitPreview = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("wkPreview")
-
         try? FileManager.default.removeItem(at: webkitPreview)
 
         let encryption = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("Encryption")
         try? FileManager.default.removeItem(at: encryption)
+
+        var temporary = URL(fileURLWithPath: NSTemporaryDirectory())
+        temporary.appendPathComponent("ThumbnailsBig")
+        try? FileManager.default.removeItem(at: temporary)
+
+        let storyboard = NSStoryboard(name: "Main", bundle: nil)
+        guard let mainWC = storyboard.instantiateController(withIdentifier: "MainWindowController") as? MainWindowController else {
+            fatalError("Error getting main window controller")
+        }
+
+        if let x = mainWC.window?.frame.origin.x, let y = mainWC.window?.frame.origin.y {
+            UserDefaultsManagement.lastScreenX = Int(x)
+            UserDefaultsManagement.lastScreenY = Int(y)
+        }
     }
     
     private func applyAppearance() {
@@ -159,7 +173,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 
                 let bookmarks = SandboxBookmark.sharedInstance()
                 bookmarks.save(url: url)
-                
+
+                UserDefaultsManagement.storageType = .custom
                 UserDefaultsManagement.storagePath = url.path
                 
                 self.restartApp()
@@ -172,7 +187,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func constructMenu() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         
-        if let button = statusItem?.button, let image = NSImage(named: "blackWhite") {
+        if let button = statusItem?.button, let image = NSImage(named: "menuBar") {
             image.size.width = 20
             image.size.height = 20
             button.image = image
@@ -313,5 +328,58 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
 
         appDockTile.display()
+    }
+
+    private func checkStorageChanges() {
+        if Storage.sharedInstance().shouldMovePrompt,
+            let local = UserDefaultsManagement.localDocumentsContainer,
+            let iCloudDrive = UserDefaultsManagement.iCloudDocumentsContainer
+        {
+            let message = NSLocalizedString("We are detect that you are install FSNotes from Mac App Store with default storage in iCloud Drive, do you want to move old database in iCloud Drive?", comment: "")
+
+            promptToMoveDatabase(from: local, to: iCloudDrive, messageText: message)
+        }
+    }
+
+    public func promptToMoveDatabase(from currentURL: URL, to url : URL, messageText: String) {
+           let alert = NSAlert()
+           alert.messageText = messageText
+           alert.informativeText =
+                NSLocalizedString("Otherwise, the database of your notes will be available at: ", comment: "") + currentURL.path
+
+           alert.alertStyle = .warning
+           alert.addButton(withTitle: NSLocalizedString("No", comment: ""))
+           alert.addButton(withTitle: NSLocalizedString("Yes", comment: ""))
+           if alert.runModal() == .alertSecondButtonReturn {
+               if let list = try? FileManager.default.contentsOfDirectory(at: currentURL, includingPropertiesForKeys: nil, options: .init()) {
+                   for item in list {
+                       do {
+                            let dst = url.appendingPathComponent(item.lastPathComponent)
+                            try FileManager.default.moveItem(at: item, to: dst)
+                       } catch {
+                            let exist = NSAlert()
+                            var message = NSLocalizedString("We can not move \"{DST_PATH}\" because this item already exist in selected destination.", comment: "")
+
+                            message = message.replacingOccurrences(of: "{DST_PATH}", with: item.path)
+
+                            exist.messageText = message
+                            exist.addButton(withTitle: NSLocalizedString("OK", comment: ""))
+                            exist.runModal()
+                       }
+                   }
+               }
+           }
+    }
+
+    func application(_ application: NSApplication, continue userActivity: NSUserActivity, restorationHandler: @escaping ([NSUserActivityRestoring]) -> Void) -> Bool {
+
+        ViewController.shared()?.restoreUserActivityState(userActivity)
+
+        return true
+    }
+
+    func application(_ application: NSApplication, willContinueUserActivityWithType userActivityType: String) -> Bool {
+
+        return true
     }
 }

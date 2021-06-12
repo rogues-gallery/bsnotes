@@ -7,7 +7,6 @@
 //
 
 import Cocoa
-import Down
 import Highlightr
 import Carbon.HIToolbox
 import FSNotesCore_macOS
@@ -15,15 +14,21 @@ import FSNotesCore_macOS
 class EditTextView: NSTextView, NSTextFinderClient {
     public static var note: Note?
     public static var isBusyProcessing: Bool = false
-    public static var isPasteOperation: Bool = false
+    public static var shouldForceRescan: Bool = false
+    public static var lastRemoved: String?
 
     public var viewDelegate: ViewController?
     
     var isHighlighted: Bool = false
     let storage = Storage.sharedInstance()
     let caretWidth: CGFloat = 2
-    var downView: MarkdownView?
-    var timer: Timer?
+    var downView: MPreviewView?
+    public var timer: Timer?
+    public var tagsTimer: Timer?
+    public var markdownView: MPreviewView?
+    public var restoreRange: NSRange? = nil
+    
+    @IBOutlet weak var previewMathJax: NSMenuItem!
 
     public static var imagesLoaderQueue = OperationQueue.init()
     
@@ -38,13 +43,13 @@ class EditTextView: NSTextView, NSTextFinderClient {
         
         return super.becomeFirstResponder()
     }
-    
+
     //MARK: caret width
 
     override func drawInsertionPoint(in rect: NSRect, color: NSColor, turnedOn flag: Bool) {
         var newRect = NSRect(origin: rect.origin, size: rect.size)
         newRect.size.width = self.caretWidth
-        
+
         if let range = getParagraphRange(), range.upperBound != textStorage?.length || (
             range.upperBound == textStorage?.length
             && textStorage?.string.last == "\n"
@@ -52,7 +57,7 @@ class EditTextView: NSTextView, NSTextFinderClient {
         ) {
             newRect.size.height = newRect.size.height - CGFloat(UserDefaultsManagement.editorLineSpacing)
         }
-        
+
         let clr = NSColor(red:0.47, green:0.53, blue:0.69, alpha:1.0)
         super.drawInsertionPoint(in: newRect, color: clr, turnedOn: flag)
     }
@@ -66,18 +71,24 @@ class EditTextView: NSTextView, NSTextFinderClient {
         newInvalidRect.size.width += self.caretWidth - 1
         super.setNeedsDisplay(newInvalidRect)
     }
- 
+
     // MARK: Menu
     
     override func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         guard let note = EditTextView.note else { return false }
-        
+
+        menuItem.isHidden = false
+
         if menuItem.menu?.identifier?.rawValue == "editMenu" {
             validateSubmenu(menuItem.menu!)
         }
         
         if menuItem.menu?.identifier?.rawValue == "formatMenu", let vc = ViewController.shared(), vc.notesTableView.selectedRow == -1 || !vc.editArea.hasFocus() {
             return false
+        }
+
+        if menuItem.menu?.identifier?.rawValue == "viewMenu" && menuItem.identifier?.rawValue == "previewMathJax" {
+            menuItem.state = UserDefaultsManagement.mathJaxPreview ? .on : .off
         }
         
         if note.isRTF() {
@@ -89,18 +100,27 @@ class EditTextView: NSTextView, NSTextFinderClient {
                 NSLocalizedString("Header 5", comment: ""),
                 NSLocalizedString("Header 6", comment: ""),
                 NSLocalizedString("Link", comment: ""),
-                NSLocalizedString("Image", comment: ""),
+                NSLocalizedString("Image or file", comment: ""),
                 NSLocalizedString("Toggle preview", comment: ""),
-                NSLocalizedString("Code Block", comment: "")
+                NSLocalizedString("Code Block", comment: ""),
+                NSLocalizedString("Code Span", comment: ""),
+                NSLocalizedString("Todo", comment: "")
             ]
+
+            if disableRTF.contains(menuItem.title) {
+                menuItem.isHidden = true
+            }
             
             return !disableRTF.contains(menuItem.title)
         } else {
             let disable = [
-                NSLocalizedString("Underline", comment: ""),
-                NSLocalizedString("Strikethrough", comment: "")
+                NSLocalizedString("Underline", comment: "")
             ]
-            
+
+            if disable.contains(menuItem.title) {
+                menuItem.isHidden = true
+            }
+
             return !disable.contains(menuItem.title)
         }
     }
@@ -180,10 +200,6 @@ class EditTextView: NSTextView, NSTextFinderClient {
             return
         }
         
-        if !vc.emptyEditAreaImage.isHidden {
-            vc.makeNote(vc.search)
-        }
-
         guard let container = self.textContainer, let manager = self.layoutManager else { return }
 
         let point = self.convert(event.locationInWindow, from: nil)
@@ -206,7 +222,7 @@ class EditTextView: NSTextView, NSTextFinderClient {
         super.mouseDown(with: event)
         saveCursorPosition()
         
-        if !UserDefaultsManagement.preview {
+        if vc.currentPreviewState == .off {
             self.isEditable = true
         }
     }
@@ -214,7 +230,7 @@ class EditTextView: NSTextView, NSTextFinderClient {
     override func mouseMoved(with event: NSEvent) {
         let viewController = self.window?.contentViewController as! ViewController
         if (!viewController.emptyEditAreaImage.isHidden) {
-            NSCursor.pointingHand.set()
+            NSCursor.arrow.set()
             return
         }
 
@@ -237,7 +253,7 @@ class EditTextView: NSTextView, NSTextFinderClient {
             return
         }
         
-        if UserDefaultsManagement.preview {
+        if viewController.currentPreviewState == .on {
             return
         }
         
@@ -268,16 +284,217 @@ class EditTextView: NSTextView, NSTextFinderClient {
 
         return false
     }
-    
-    override func completions(forPartialWordRange charRange: NSRange, indexOfSelectedItem index: UnsafeMutablePointer<Int>) -> [String]? {
-        
-        let nsString = string as NSString
-        let chars = nsString.substring(with: charRange)
-        if let notes = storage.getBy(startWith: chars) {
-            let titles = notes.map{ $0.title }
-            return titles
+
+    private func isBetweenBraces(location: Int) -> (String, NSRange)? {
+        guard let storage = textStorage else { return nil }
+
+        let string = Array(storage.string)
+        let length = string.count
+
+        guard location < length else { return nil }
+
+        var firstLeftFound = false
+        var firstRigthFound = false
+
+        var rigthFound = false
+        var leftFound = false
+
+        var i = location - 1
+        var j = location
+
+        while i >= 0 {
+            let char = string[i]
+            if firstLeftFound {
+                leftFound = char == "["
+                break
+            }
+
+            if char.isNewline {
+                break
+            }
+
+            if char == "[" {
+                firstLeftFound = true
+            }
+
+            i -= 1
         }
+
+        while length > j {
+            let char = string[j]
+            if firstRigthFound {
+                rigthFound = char == "]"
+                break
+            }
+
+            if char.isNewline {
+                break
+            }
+
+            if char == "]" {
+                firstRigthFound = true
+            }
+
+            j += 1
+        }
+
+        var result = String()
+        if leftFound && rigthFound {
+            result =
+                String(string[i...j])
+
+            result = result
+                .replacingOccurrences(of: "[[", with: "")
+                .replacingOccurrences(of: "]]", with: "")
+
+            return (result, NSRange(i...j))
+        }
+
         return nil
+    }
+
+    private var completeRange = NSRange()
+
+    override var rangeForUserCompletion: NSRange {
+        guard let storageString = textStorage?.string else { return super.rangeForUserCompletion }
+
+        let to = storageString.utf16.index(storageString.utf16.startIndex, offsetBy: selectedRange.location)
+        let distance = string.distance(from: storageString.startIndex, to: to)
+
+        if let result = isBetweenBraces(location: distance) {
+            let range = result.1
+
+            // decode multibyte offset for Emoji like "🇺🇦"
+            let startIndex = string.index(string.startIndex, offsetBy: range.lowerBound + 2)
+            let startRange = NSRange(startIndex...startIndex, in: string)
+            let replacementRange = NSRange(location: startRange.lowerBound, length: result.0.count)
+
+            return replacementRange
+        }
+
+        return super.rangeForUserCompletion
+    }
+
+    override func completions(forPartialWordRange charRange: NSRange, indexOfSelectedItem index: UnsafeMutablePointer<Int>) -> [String]? {
+
+        guard let storageString = textStorage?.string else { return nil }
+
+        let to = storageString.utf16.index(storageString.utf16.startIndex, offsetBy: selectedRange.location)
+        let distance = string.distance(from: storageString.startIndex, to: to)
+
+        if let result = isBetweenBraces(location: distance) {
+            if let notes = storage.getBy(startWith: result.0) {
+                let titles = notes.map{ String($0.title) }.filter({ $0.count > 0 }).filter({ $0 != result.0
+
+                }).sorted()
+
+                return titles
+            }
+
+            return nil
+        }
+
+        let mainWord = (string as NSString).substring(with: charRange)
+
+        if UserDefaultsManagement.inlineTags {
+            if (string as NSString).substring(with: charRange) == "#" {
+                if let tags = viewDelegate?.sidebarOutlineView.getAllTags() {
+                    let list = tags.compactMap({ "#\($0)"}).sorted { $0.count > $1.count }
+
+                    return unfoldTags(list: list).sorted { $0.count < $1.count }
+                }
+
+                return nil
+            } else if charRange.location > 0,
+                let parRange = textStorage?.mutableString.paragraphRange(for: NSRange(location: charRange.location, length: 0)),
+                let paragraph = textStorage?.mutableString.substring(with: parRange)
+            {
+                let words = paragraph.components(separatedBy: " ")
+
+                var i = parRange.location
+                for word in words {
+                    let range = NSRange(location: i + 1, length: word.count)
+                    i += word.count + 1
+
+                    if word == "" || charRange.location > range.upperBound || charRange.location < range.lowerBound || range.location <= 0 {
+                        continue
+                    }
+
+                    if let tags = viewDelegate?.sidebarOutlineView.getAllTags(),
+                        let partialWord = textStorage?.mutableString.substring(with: NSRange(range.location..<charRange.upperBound)) {
+
+                        var parts = partialWord.components(separatedBy: "/")
+                        _ = parts.popLast()
+
+                        if !partialWord.contains("/") {
+                            let list = tags.filter({ $0.starts(with: partialWord )})
+
+                            return unfoldTags(list: list, isFirstLevel: true, word: mainWord).sorted { $0.count < $1.count }
+                        }
+
+                        let excludePart = parts.joined(separator: "/")
+                        let offset = excludePart.count + 1
+
+                        if partialWord.last != "/" {
+                            let list = tags.filter({ $0.starts(with: partialWord )})
+                                .filter({ $0 != partialWord })
+                                .compactMap({ String($0[offset...]) })
+
+                            return unfoldTags(list: list, word: mainWord).sorted { $0.count < $1.count }
+                        }
+
+                        if let lastPart = parts.popLast() {
+                            let list = tags.filter({ $0.starts(with: partialWord )})
+                                .filter({ $0 != partialWord })
+                                .compactMap({ String(lastPart + "/" + $0[offset...]) })
+
+                            return unfoldTags(list: list, word: mainWord).sorted { $0.count < $1.count }
+                        }
+
+                        return nil
+                    }
+                }
+            }
+        }
+
+        return nil
+    }
+
+    private func unfoldTags(list: [String], isFirstLevel: Bool = false, word: String = "") -> [String] {
+
+        let check = word + "/"
+        if list.filter({ $0.starts(with: check)}).count > 0 {
+            return []
+        }
+
+        var list: Set<String> = Set(list)
+
+        for listItem in list {
+            if listItem.contains("/") {
+                let items = listItem.components(separatedBy: "/")
+
+                var start = items.first!
+                var first = true
+
+                for item in items {
+                    if first {
+                        first = false
+                        if isFirstLevel, !list.contains(start) {
+                            list.insert(start)
+                        }
+                        continue
+                    }
+
+                    start += ("/" + item)
+
+                    if !list.contains(start) {
+                        list.insert(start)
+                    }
+                }
+            }
+        }
+
+        return Array(list).sorted()
     }
 
     override var writablePasteboardTypes: [NSPasteboard.PasteboardType] {
@@ -309,7 +526,7 @@ class EditTextView: NSTextView, NSTextFinderClient {
         }
 
         if type.rawValue == "NSStringPboardType" {
-            EditTextView.isPasteOperation = true
+            EditTextView.shouldForceRescan = true
             return super.writeSelection(to: pboard, type: type)
         }
 
@@ -318,6 +535,24 @@ class EditTextView: NSTextView, NSTextFinderClient {
 
     // Copy empty string
     override func copy(_ sender: Any?) {
+        if selectedRanges.count > 1, let note = EditTextView.note {
+            var combined = String()
+            for range in selectedRanges {
+                if let range = range as? NSRange, let sub = attributedSubstring(forProposedRange: range, actualRange: nil) as? NSMutableAttributedString {
+                    if note.isMarkdown() {
+                        combined.append(sub.unLoadCheckboxes().unLoadImages().string + "\n")
+                    } else {
+                        combined.append(sub.string + "\n")
+                    }
+                }
+            }
+
+            let pasteboard = NSPasteboard.general
+            pasteboard.declareTypes([NSPasteboard.PasteboardType.string], owner: nil)
+            pasteboard.setString(combined.trim().removeLastNewLine(), forType: NSPasteboard.PasteboardType.string)
+            return
+        }
+
         if self.selectedRange.length == 0, let paragraphRange = self.getParagraphRange(), let paragraph = attributedSubstring(forProposedRange: paragraphRange, actualRange: nil) {
             let pasteboard = NSPasteboard.general
             pasteboard.declareTypes([NSPasteboard.PasteboardType.string], owner: nil)
@@ -329,7 +564,7 @@ class EditTextView: NSTextView, NSTextFinderClient {
     }
 
     override func paste(_ sender: Any?) {
-        guard let note = EditTextView.note, let storage = textStorage else { return }
+        guard let note = EditTextView.note else { return }
 
         guard note.isMarkdown() else {
             super.paste(sender)
@@ -338,45 +573,27 @@ class EditTextView: NSTextView, NSTextFinderClient {
             return
         }
 
-        if let clipboard = NSPasteboard.general.data(forType: .rtfd) {
-            let currentRange = selectedRange()
-
-            if let string = NSAttributedString(rtfd: clipboard, documentAttributes: nil) {
-                let mutable = NSMutableAttributedString(attributedString: string)
-                mutable.loadCheckboxes()
-                mutable.updateParagraph()
-
-                self.breakUndoCoalescing()
-
-                EditTextView.isPasteOperation = true
-                self.insertText(mutable, replacementRange: currentRange)
-
-                self.breakUndoCoalescing()
-            }
-
-            saveTextStorageContent(to: note)
-
-            // Set image size and .link after storage full scan (cleaned)
-            storage.sizeAttachmentImages()
-            return
-        }
-
         if pasteImageFromClipboard(in: note) {
             return
         }
 
         if let clipboard = NSPasteboard.general.string(forType: NSPasteboard.PasteboardType.string) {
-            EditTextView.isPasteOperation = true
+            let attributed = NSMutableAttributedString(string: clipboard)
+            attributed.loadCheckboxes()
+
+            EditTextView.shouldForceRescan = true
 
             let currentRange = selectedRange()
 
             self.breakUndoCoalescing()
-            self.insertText(clipboard, replacementRange: currentRange)
+            self.insertText(attributed, replacementRange: currentRange)
             self.breakUndoCoalescing()
 
             saveTextStorageContent(to: note)
             return
         }
+
+        super.paste(sender)
     }
 
     public func saveImages() {
@@ -397,40 +614,23 @@ class EditTextView: NSTextView, NSTextFinderClient {
 
             if let note = EditTextView.note,
                 let imageData = textAttachment.fileWrapper?.regularFileContents,
-                let fileName = ImagesProcessor.writeImage(data: imageData, note: note) {
-                let path = note.getMdImagePath(name: fileName)
+                let path = ImagesProcessor.writeFile(data: imageData, note: note) {
 
-                storage.attribute(filePathKey, at: range.location, effectiveRange: nil)
                 storage.addAttribute(filePathKey, value: path, range: range)
             }
         }
     }
 
-    @IBAction func editorMenuItem(_ sender: NSMenuItem) {
-        if sender.title == NSLocalizedString("Image", comment: "") {
-            sender.keyEquivalentModifierMask = [.shift, .command]
-        }
+    @IBAction func toggleMathJax(_ sender: NSMenuItem) {
+        sender.state = sender.state == .on ? .off : .on
 
-        let keyEquivalent = (sender as AnyObject).keyEquivalent.lowercased()
-        let dict = [
-            "b": kVK_ANSI_B, "i": kVK_ANSI_I, "j": kVK_ANSI_J, "y": kVK_ANSI_Y,
-            "u": kVK_ANSI_U, "1": kVK_ANSI_1, "2": kVK_ANSI_2, "3": kVK_ANSI_3,
-            "4": kVK_ANSI_4, "5": kVK_ANSI_5, "6": kVK_ANSI_6] as [String: Int]
-        
-        if let key = dict[keyEquivalent] {
-            let keyCode = UInt16(key)
-            guard let modifier = (sender as AnyObject).keyEquivalentModifierMask else { return }
-            
-            _ = formatShortcut(keyCode: keyCode, modifier: modifier)
-        }
-    }
-    
-    @IBAction func togglePreview(_ sender: Any) {
+        UserDefaultsManagement.mathJaxPreview = sender.state == .on
+
         guard let vc = ViewController.shared() else { return }
 
-        vc.togglePreview()
+        vc.refillEditArea(force: true)
     }
-    
+
     func getSelectedNote() -> Note? {
         guard let vc = ViewController.shared() else { return nil }
 
@@ -442,31 +642,40 @@ class EditTextView: NSTextView, NSTextFinderClient {
             return false
         }
         
-        if UserDefaultsManagement.preview && note.isMarkdown() {
+        if viewDelegate?.currentPreviewState == .on && !note.isRTF() {
             return false
         }
         
         return true
     }
 
-    func fill(note: Note, highlight: Bool = false, saveTyping: Bool = false) {
+    func fill(note: Note, highlight: Bool = false, saveTyping: Bool = false, force: Bool = false) {
+        registerHandoff(note: note)
+
+        // resets timer if editor refilled 
+        viewDelegate?.breakUndoTimer.invalidate()
+
+        unregisterDraggedTypes()
+        registerForDraggedTypes([
+            NSPasteboard.PasteboardType(kUTTypeFileURL as String),
+            NSPasteboard.noteType
+        ])
+
         let viewController = self.window?.contentViewController as! ViewController
         viewController.emptyEditAreaImage.isHidden = true
-        
+
         if note.container == .encryptedTextPack {
             viewController.emptyEditAreaImage.image = NSImage(imageLiteralResourceName: "locked")
             viewController.emptyEditAreaImage.isHidden = false
         } else {
-            viewController.emptyEditAreaImage.image = NSImage(imageLiteralResourceName: "makeNoteAsset")
+            viewController.emptyEditAreaImage.image = NSImage(imageLiteralResourceName: "logoInCircle")
             viewController.emptyEditAreaImage.isHidden = true
         }
         
         EditTextView.note = note
         UserDefaultsManagement.lastSelectedURL = note.url
-        
-        downView?.removeFromSuperview()
 
-        viewController.updateTitle(newTitle: note.hasTitle() ? note.title : "")
+        viewController.updateTitle(newTitle: note.getFileName())
 
         if let appd = NSApplication.shared.delegate as? AppDelegate,
             let md = appd.mainWindowController {
@@ -480,39 +689,28 @@ class EditTextView: NSTextView, NSTextFinderClient {
             typingAttributes[.font] = UserDefaultsManagement.noteFont
         }
 
-        if (UserDefaultsManagement.preview && note.isMarkdown()) {
-            // Removes scroll for long notes
-            
-            EditTextView.note = nil
-            textStorage?.setAttributedString(NSAttributedString())
-            EditTextView.note = note
-
-            let path = Bundle.main.path(forResource: "DownView", ofType: ".bundle")
-            let url = NSURL.fileURL(withPath: path!)
-            let bundle = Bundle(url: url)
-
-            let markdownString = note.getPrettifiedContent()
-            let css = getPreviewStyle()
-
-            do {
-                var imagesStorage = note.project.url
-
-                if note.isTextBundle() {
-                    imagesStorage = note.getURL()
-                }
-
-                downView = try? MarkdownView(imagesStorage: imagesStorage, frame: (viewController.editAreaScroll.bounds), markdownString: markdownString, css: css, templateBundle: bundle, didLoadSuccessfully: {
-
-                    if EditTextView.note != nil {
-                        viewController.editAreaScroll.addSubview(self.downView!)
-                    }
-                })
-            }
+        if viewController.currentPreviewState == .on && !note.isRTF() {
+            loadMarkdownWebView(note: note, force: force)
             return
         }
 
+        markdownView?.removeFromSuperview()
+        markdownView = nil
+
         guard let storage = textStorage else { return }
-        storage.setAttributedString(note.content)
+
+        if note.isMarkdown(), let content = note.content.mutableCopy() as? NSMutableAttributedString {
+            if UserDefaultsManagement.liveImagesPreview {
+                content.loadImages(note: note)
+            }
+
+            content.replaceCheckboxes()
+
+            EditTextView.shouldForceRescan = true
+            storage.setAttributedString(content)
+        } else {
+            storage.setAttributedString(note.content)
+        }
 
         if !note.isMarkdown()  {
             fillPlainAndRTFStyle(note: note, saveTyping: saveTyping)
@@ -524,24 +722,41 @@ class EditTextView: NSTextView, NSTextFinderClient {
             processor.highlightKeyword(search: search)
             isHighlighted = true
         }
-        
-        if note.isMarkdown() {
-            EditTextView.isBusyProcessing = true
-            textStorage?.replaceCheckboxes()
-
-            if UserDefaultsManagement.liveImagesPreview {
-                EditTextView.imagesLoaderQueue.cancelAllOperations()
-                loadImages()
-            }
-            
-            EditTextView.isBusyProcessing = false
-        }
 
         restoreCursorPosition()
         applyLeftParagraphStyle()
 
         if UserDefaultsManagement.appearanceType == AppearanceType.Custom {
             backgroundColor = UserDefaultsManagement.bgColor
+        }
+
+        if let restoreRange = self.restoreRange {
+            NSApp.mainWindow?.makeFirstResponder(self)
+            setSelectedRange(restoreRange)
+            self.restoreRange = nil
+        }
+    }
+
+    private func loadMarkdownWebView(note: Note, force: Bool) {
+        guard let vc = ViewController.shared() else { return }
+
+        EditTextView.note = nil
+        textStorage?.setAttributedString(NSAttributedString())
+        EditTextView.note = note
+
+        if markdownView == nil {
+            let frame = vc.editAreaScroll.bounds
+            markdownView = MPreviewView(frame: frame, note: note, closure: {})
+            if let view = self.markdownView, EditTextView.note == note {
+                vc.editAreaScroll.addSubview(view)
+            }
+        } else {
+            /// Resize markdownView
+            let frame = vc.editAreaScroll.bounds
+            markdownView?.frame = frame
+
+            /// Load note if needed
+            markdownView?.load(note: note, force: force)
         }
     }
 
@@ -550,10 +765,7 @@ class EditTextView: NSTextView, NSTextFinderClient {
 
         if note.type == .RichText && !saveTyping {
             storage.updateFont()
-        }
-
-        if note.type == .PlainText {
-            font = UserDefaultsManagement.noteFont
+            storage.loadUnderlines()
         }
 
         setTextColor()
@@ -568,13 +780,6 @@ class EditTextView: NSTextView, NSTextFinderClient {
             textColor = NSColor.init(named: "mainText")
         } else {
             textColor = UserDefaultsManagement.fontColor
-        }
-    }
-
-    @objc func loadImages() {
-        if let note = self.getSelectedNote(), UserDefaultsManagement.liveImagesPreview {
-            let processor = ImagesProcessor(styleApplier: textStorage!, note: note)
-            processor.load()
         }
     }
 
@@ -598,67 +803,102 @@ class EditTextView: NSTextView, NSTextFinderClient {
     
     public func clear() {
         textStorage?.setAttributedString(NSAttributedString())
-        downView?.removeFromSuperview()
+        markdownView?.removeFromSuperview()
+        markdownView = nil
+
         isEditable = false
         
         let appDelegate = NSApplication.shared.delegate as! AppDelegate
         self.window?.title = appDelegate.appTitle
         
-        let viewController = self.window?.contentViewController as! ViewController
-        viewController.emptyEditAreaImage.image = NSImage(imageLiteralResourceName: "makeNoteAsset")
-        viewController.emptyEditAreaImage.isHidden = false
-        viewController.updateTitle(newTitle: nil)
+        if let viewController = self.window?.contentViewController as? ViewController {
+            viewController.emptyEditAreaImage.image = NSImage(imageLiteralResourceName: "logoInCircle")
+            viewController.emptyEditAreaImage.isHidden = false
+            viewController.updateTitle(newTitle: nil)
+        }
         
         EditTextView.note = nil
     }
-    
-    func formatShortcut(keyCode: UInt16, modifier: NSEvent.ModifierFlags) -> Bool {
+
+    @IBAction func boldMenu(_ sender: Any) {
         guard let vc = ViewController.shared(),
             let editArea = vc.editArea,
-            let note = getSelectedNote(),
-            !UserDefaultsManagement.preview,
-            editArea.isEditable else { return false }
+            let note = vc.getCurrentNote(),
+            vc.currentPreviewState == .off,
+            editArea.isEditable else { return }
 
         let formatter = TextFormatter(textView: editArea, note: note)
-        
-        switch keyCode {
-        case 11: // cmd-b
-            formatter.bold()
-            return true
-        case 34: // command-shift-i (image) | command-option-i (link) | command-i
-            if (note.isMarkdown() && modifier.contains([.command, .option])) { //
-                formatter.link()
-                return true
-            }
-        
-            formatter.italic()
-            return true
-        case 32: // cmd-u
-            formatter.underline()
-            return true
-        case 16: // cmd-y
-            formatter.strike()
-            return true
-        case (18...23): // cmd-1/6 (headers 1/6)
-            if note.isMarkdown() {
-                var string = ""
-                for index in [18, 19, 20, 21, 23, 22] {
-                    string = string + "#"
-                    if Int(keyCode) == index {
-                        break
-                    }
-                }
-                
-                formatter.header(string)
-                return true
-            }
-            
-            return false
-        default:
-            return false
-        }
+        formatter.bold()
     }
-    
+
+    @IBAction func italicMenu(_ sender: Any) {
+        guard let vc = ViewController.shared(),
+            let editArea = vc.editArea,
+            let note = vc.getCurrentNote(),
+            vc.currentPreviewState == .off,
+            editArea.isEditable else { return }
+
+        let formatter = TextFormatter(textView: editArea, note: note)
+        formatter.italic()
+    }
+
+    @IBAction func linkMenu(_ sender: Any) {
+        guard let vc = ViewController.shared(),
+            let editArea = vc.editArea,
+            let note = vc.getCurrentNote(),
+            vc.currentPreviewState == .off,
+            editArea.isEditable else { return }
+
+        let formatter = TextFormatter(textView: editArea, note: note)
+        formatter.link()
+    }
+
+    @IBAction func underlineMenu(_ sender: Any) {
+        guard let vc = ViewController.shared(),
+            let editArea = vc.editArea,
+            let note = vc.getCurrentNote(),
+            vc.currentPreviewState == .off,
+            editArea.isEditable else { return }
+
+        let formatter = TextFormatter(textView: editArea, note: note)
+        formatter.underline()
+    }
+
+    @IBAction func strikeMenu(_ sender: Any) {
+        guard let vc = ViewController.shared(),
+            let editArea = vc.editArea,
+            let note = vc.getCurrentNote(),
+            vc.currentPreviewState == .off,
+            editArea.isEditable else { return }
+
+        let formatter = TextFormatter(textView: editArea, note: note)
+        formatter.strike()
+    }
+
+    @IBAction func headerMenu(_ sender: NSMenuItem) {
+        guard let vc = ViewController.shared(),
+            let editArea = vc.editArea,
+            let note = vc.getCurrentNote(),
+            vc.currentPreviewState == .off,
+            editArea.isEditable else { return }
+
+        guard let id = sender.identifier?.rawValue else { return }
+
+        let code =
+            Int(id.replacingOccurrences(of: "format.h", with: ""))
+
+        var string = String()
+        for index in [1, 2, 3, 4, 5, 6] {
+            string = string + "#"
+            if code == index {
+                break
+            }
+        }
+
+        let formatter = TextFormatter(textView: editArea, note: note)
+        formatter.header(string)
+    }
+
     func getParagraphRange() -> NSRange? {
         guard let vc = ViewController.shared(),
             let editArea = vc.editArea,
@@ -719,8 +959,6 @@ class EditTextView: NSTextView, NSTextFinderClient {
     }
 
     override func keyDown(with event: NSEvent) {
-        guard let storage = self.textStorage else { return }
-
         guard !(
             event.modifierFlags.contains(.shift) &&
             [
@@ -734,9 +972,7 @@ class EditTextView: NSTextView, NSTextFinderClient {
             return
         }
         
-        guard let note = EditTextView.note else {
-            return
-        }
+        guard let note = EditTextView.note else { return }
         
         let brackets = [
             "(" : ")",
@@ -745,26 +981,17 @@ class EditTextView: NSTextView, NSTextFinderClient {
             "\"" : "\"",
         ]
         
-        let sRange = selectedRange()
-        
         if UserDefaultsManagement.autocloseBrackets,
             let openingBracket = event.characters,
             let closingBracket = brackets[openingBracket] {
             if selectedRange().length > 0 {
                 let before = NSMakeRange(selectedRange().lowerBound, 0)
-                self.insertText(self.applyStyle(openingBracket), replacementRange: before)
+                self.insertText(openingBracket, replacementRange: before)
                 let after = NSMakeRange(selectedRange().upperBound, 0)
-                self.insertText(self.applyStyle(closingBracket), replacementRange: after)
+                self.insertText(closingBracket, replacementRange: after)
             } else {
                 super.keyDown(with: event)
-                self.insertText(self.applyStyle(closingBracket), replacementRange: selectedRange())
-                
-                let paragraphRange = (storage.string as NSString).paragraphRange(for: sRange)
-                if self.isCodeBlock(range: paragraphRange) && note.isMarkdown() {
-                    let attributes = getCodeBlockAttributes()
-                    storage.addAttributes(attributes, range: NSRange(location: sRange.location, length: 1))
-                }
-                
+                self.insertText(closingBracket, replacementRange: selectedRange())
                 self.moveBackward(self)
             }
             return
@@ -783,7 +1010,8 @@ class EditTextView: NSTextView, NSTextFinderClient {
         if event.keyCode == kVK_Tab && !hasMarkedText(){
             breakUndoCoalescing()
             if UserDefaultsManagement.spacesInsteadTabs {
-                insertText("    ", replacementRange: selectedRange())
+                let tab = TextFormatter.getAttributedCode(string: "    ")
+                insertText(tab, replacementRange: selectedRange())
                 breakUndoCoalescing()
                 return
             }
@@ -801,8 +1029,33 @@ class EditTextView: NSTextView, NSTextFinderClient {
             breakUndoCoalescing()
             return
         }
-        
-        if note.type == .PlainText || note.type == .RichText {
+
+        if event.keyCode == kVK_Delete && event.modifierFlags.contains(.option) {
+            deleteWordBackward(nil)
+            return
+        }
+
+        if event.characters?.unicodeScalars.first == "o" && event.modifierFlags.contains(.command) {
+            guard let storage = textStorage else { return }
+
+            var location = selectedRange().location
+            if location == storage.length && location > 0 {
+                location = location - 1
+            }
+
+            if storage.length > location, let link = textStorage?.attribute(.link, at: location, effectiveRange: nil) as? String {
+
+                if link.isValidEmail(), let mail = URL(string: "mailto:\(link)") {
+                    NSWorkspace.shared.open(mail)
+                } else if let url = URL(string: link) {
+                    _ = try? NSWorkspace.shared.open(url, options: .default, configuration: [:])
+                }
+            }
+
+            return
+        }
+
+        if note.type == .RichText {
             super.keyDown(with: event)
             saveCursorPosition()
             
@@ -811,8 +1064,7 @@ class EditTextView: NSTextView, NSTextFinderClient {
             processor.higlightLinks()
             
             if note.type == .RichText {
-                saveTextStorageContent(to: note)
-                note.save()
+                note.save(attributed: attributedString())
             }
             
             return
@@ -823,17 +1075,81 @@ class EditTextView: NSTextView, NSTextFinderClient {
     }
 
     override func shouldChangeText(in affectedCharRange: NSRange, replacementString: String?) -> Bool {
+
+        if let par = getParagraphRange(),
+            let text = textStorage?.mutableString.substring(with: par), text.contains("[["), text.contains("]]") {
+
+            guard let storageString = textStorage?.string else { return false }
+            let to = storageString.utf16.index(storageString.utf16.startIndex, offsetBy: affectedCharRange.location)
+            let distance = string.distance(from: storageString.startIndex, to: to)
+
+            if isBetweenBraces(location: distance) != nil {
+                if !hasMarkedText() {
+                    DispatchQueue.main.async {
+                        self.complete(nil)
+                    }
+                }
+
+                return super.shouldChangeText(in: affectedCharRange, replacementString: replacementString)
+            }
+        }
+
+        if UserDefaultsManagement.inlineTags {
+            if let repl = replacementString, repl.count == 1, !["", " ", "\t", "\n"].contains(repl), let parRange = textStorage?.mutableString.paragraphRange(for: NSRange(location: affectedCharRange.location, length: 0)) {
+
+                var nextChar = " "
+                let nextCharLocation = affectedCharRange.location + 1
+                if selectedRange().length == 0, let textStorage = textStorage, nextCharLocation <= textStorage.length {
+                    let nextCharRange = NSRange(location: affectedCharRange.location, length: 1)
+                    nextChar = textStorage.mutableString.substring(with: nextCharRange)
+                }
+
+                if let paragraph = textStorage?.mutableString.substring(with: parRange) {
+                    let words = paragraph.components(separatedBy: " ")
+                    var i = parRange.location
+                    for word in words {
+                        let range = NSRange(location: i + 1, length: word.count)
+
+                        i += word.count + 1
+
+                        if word == "" || affectedCharRange.location > range.upperBound || affectedCharRange.location < range.lowerBound || range.location <= 0 {
+                            continue
+                        }
+
+                        let hashRange = NSRange(location: range.location - 1, length: 1)
+                        if (self.string as NSString).substring(with: hashRange) == "#", nextChar.isWhitespace {
+                            if !hasMarkedText() {
+                                DispatchQueue.main.async {
+                                    self.complete(nil)
+                                }
+                            }
+                            break
+                        }
+                    }
+                }
+            }
+
+            tagsTimer?.invalidate()
+            tagsTimer = Timer.scheduledTimer(timeInterval: 2.5, target: self, selector: #selector(scanTags), userInfo: nil, repeats: false)
+        }
+
         guard let note = EditTextView.note else {
             return super.shouldChangeText(in: affectedCharRange, replacementString: replacementString)
+        }
+
+        if replacementString == "", let storage = textStorage {
+            let lastChar = storage.attributedSubstring(from: affectedCharRange).string
+            if lastChar.count == 1 {
+                EditTextView.lastRemoved = lastChar
+            }
         }
 
         if note.isMarkdown() {
             deleteUnusedImages(checkRange: affectedCharRange)
 
             typingAttributes.removeValue(forKey: .todo)
-            typingAttributes.removeValue(forKey: .backgroundColor)
 
-            if replacementString != "\n", let paragraphStyle = typingAttributes[.paragraphStyle] as? NSMutableParagraphStyle {
+            if let paragraphStyle = typingAttributes[.paragraphStyle] as? NSMutableParagraphStyle {
                 paragraphStyle.alignment = .left
             }
 
@@ -845,67 +1161,63 @@ class EditTextView: NSTextView, NSTextFinderClient {
         return super.shouldChangeText(in: affectedCharRange, replacementString: replacementString)
     }
 
-    public func isCodeBlock(paragraph: String) -> Bool {
-        if paragraph.starts(with: "\t") || paragraph.starts(with: "    ") {
-            guard TextFormatter.getAutocompleteCharsMatch(string: string) == nil && TextFormatter.getAutocompleteDigitsMatch(string: string) == nil else {
-                return false
+    override func insertCompletion(_ word: String, forPartialWordRange charRange: NSRange, movement: Int, isFinal flag: Bool) {
+        guard let storageString = textStorage?.string else { return }
+
+        let to = storageString.utf16.index(storageString.utf16.startIndex, offsetBy: selectedRange.location)
+        let distance = string.distance(from: storageString.startIndex, to: to)
+
+        if nil != isBetweenBraces(location: distance) {
+            if movement == NSReturnTextMovement {
+                super.insertCompletion(word, forPartialWordRange: charRange, movement: movement, isFinal: true)
             }
-
-            return true
+            return
         }
 
-        return false
-    }
-    
-    public func applyStyle(_ text: String) -> NSMutableAttributedString {
-        let attributedText = NSMutableAttributedString(string: text)
+        var final = flag
 
-        guard attributedText.length > 0, let note = EditTextView.note, note.isMarkdown() else { return attributedText }
-        
-        if let paragraphRange = getParagraphRange(), self.isCodeBlock(range: paragraphRange) {
-            let range = NSRange(0..<text.count)
-            attributedText.addAttributes(getCodeBlockAttributes(), range: range)
+        if let event = self.window?.currentEvent, event.type == .keyDown, ["_", "/"].contains(event.characters) {
+            final = false
         }
-        
-        return attributedText
+
+        super.insertCompletion(word, forPartialWordRange: charRange, movement: movement, isFinal: final)
     }
 
-    public func getCodeBlockAttributes() -> [NSAttributedString.Key : Any] {
-        let paragraphStyle = NSMutableParagraphStyle()
-        paragraphStyle.lineSpacing = CGFloat(UserDefaultsManagement.editorLineSpacing)
-        
-        var attributes: [NSAttributedString.Key : Any] = [
-            .backgroundColor: NotesTextProcessor.codeBackground,
-            .paragraphStyle: paragraphStyle
-        ]
-        
-        if let font = NotesTextProcessor.codeFont {
-            attributes[.font] = font
+    @objc public func scanTags() {
+        guard let note = EditTextView.note else { return }
+        let result = note.scanContentTags()
+
+        guard let outline = ViewController.shared()?.sidebarOutlineView else { return }
+
+        let added = result.0
+        let removed = result.1
+
+        if removed.count > 0 {
+            outline.removeTags(removed)
         }
-        
-        return attributes
+
+        if added.count > 0 {
+            outline.addTags(added)
+        }
+
+        if UserDefaultsManagement.naming == .autoRename {
+            let title = note.title.withoutSpecialCharacters.trunc(length: 64)
+
+            if note.fileName != title && title.count > 0 && !note.isEncrypted() {
+                note.rename(to: title)
+
+                viewDelegate?.titleLabel.updateNotesTableView()
+                viewDelegate?.updateTitle(newTitle: note.fileName)
+            }
+        }
     }
-    
-    private func isCodeBlock(range: NSRange) -> Bool {
-        guard let storage = textStorage else { return false }
-        
-        let string = storage.attributedSubstring(from: range).string
-        
-        if string.starts(with: "\t") || string.starts(with: "    ") {
-            return true
-        }
-        
-        if nil != NotesTextProcessor.getFencedCodeBlockRange(paragraphRange: range, string: storage) {
-            return true
-        }
-        
-        return false
-    }
-    
+
     func saveCursorPosition() {
         guard let note = EditTextView.note, let range = selectedRanges[0] as? NSRange, UserDefaultsManagement.restoreCursorPosition else {
             return
         }
+
+        viewDelegate?.blockFSUpdates()
         
         var length = range.lowerBound
         let data = Data(bytes: &length, count: MemoryLayout.size(ofValue: length))
@@ -915,36 +1227,38 @@ class EditTextView: NSTextView, NSTextFinderClient {
     func restoreCursorPosition() {
         guard let storage = textStorage else { return }
 
+        if let searchQuery = viewDelegate?.search.stringValue,
+           searchQuery.count > 0 {
+            if let range = storage.string.range(of: searchQuery, options: [.caseInsensitive, .diacriticInsensitive]) {
+                let nsRange = NSRange(range, in: storage.string)
+                setSelectedRange(nsRange)
+                scrollToCursor()
+            }
+
+            return
+        }
+
         guard UserDefaultsManagement.restoreCursorPosition else {
             setSelectedRange(NSMakeRange(0, 0))
             return
         }
 
-        var position = storage.length
         
-        if let note = EditTextView.note {
-            if let data = try? note.url.extendedAttribute(forName: "co.fluder.fsnotes.cursor") {
-                position = data.withUnsafeBytes { (ptr: UnsafeRawBufferPointer) -> Int in
-                    ptr.load(as: Int.self)
-                }
-            }
-        }
-        
-        if position <= storage.length {
+        if let position = EditTextView.note?.getCursorPosition(), position <= storage.length {
             setSelectedRange(NSMakeRange(position, 0))
+            scrollToCursor()
         }
-        
-        scrollToCursor()
     }
     
     func saveTextStorageContent(to note: Note) {
-        guard note.container != .encryptedTextPack else { return }
-        
-        guard let storage = self.textStorage else {
-            return
-        }
+        guard note.container != .encryptedTextPack, let storage = self.textStorage else { return }
 
-        note.content = NSMutableAttributedString(attributedString: storage.attributedSubstring(from: NSRange(0..<storage.length)))
+        let string = storage.attributedSubstring(from: NSRange(0..<storage.length))
+
+        note.content =
+            NSMutableAttributedString(attributedString: string)
+                .unLoadImages()
+                .unLoadCheckboxes()
     }
     
     func setEditorTextColor(_ color: NSColor) {
@@ -968,17 +1282,13 @@ class EditTextView: NSTextView, NSTextFinderClient {
     
     override func awakeFromNib() {
         super.awakeFromNib()
-        registerForDraggedTypes([
-            NSPasteboard.PasteboardType(kUTTypeFileURL as String)
-        ])
-
-        EditTextView.imagesLoaderQueue.maxConcurrentOperationCount = 2
+        EditTextView.imagesLoaderQueue.maxConcurrentOperationCount = 3
         EditTextView.imagesLoaderQueue.qualityOfService = .userInteractive
     }
 
     override var textContainerOrigin: NSPoint {
         let origin = super.textContainerOrigin
-        return NSPoint(x: origin.x, y: origin.y - 10)
+        return NSPoint(x: origin.x, y: origin.y - 7)
     }
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
@@ -986,7 +1296,10 @@ class EditTextView: NSTextView, NSTextFinderClient {
         let range = selectedRange
         var data: Data
 
-        guard let note = getSelectedNote(), let storage = textStorage else { return false }
+        let dropPoint = convert(sender.draggingLocation, from: nil)
+        let caretLocation = characterIndexForInsertion(at: dropPoint)
+
+        guard let note = EditTextView.note, let storage = textStorage else { return false }
 
         if let data = board.data(forType: .rtfd),
             let text = NSAttributedString(rtfd: data, documentAttributes: nil),
@@ -1002,7 +1315,9 @@ class EditTextView: NSTextView, NSTextFinderClient {
             mutable.loadCheckboxes()
 
             insertText(mutable, replacementRange: NSRange(location: caretLocation, length: 0))
-            storage.sizeAttachmentImages()
+
+            guard let container = textContainer else { return false }
+            storage.sizeAttachmentImages(container: container)
 
             DispatchQueue.main.async {
                 self.setSelectedRange(NSRange(location: caretLocation, length: mutable.length))
@@ -1026,10 +1341,8 @@ class EditTextView: NSTextView, NSTextFinderClient {
             
             guard let imageUrl = note.getImageUrl(imageName: path) else { return false }
 
-            let cacheUrl = note.getImageCacheUrl()
-
             let locationDiff = position > caretLocation ? caretLocation : caretLocation - 1
-            let attachment = ImageAttachment(title: title, path: path, url: imageUrl, cache: cacheUrl, invalidateRange: NSRange(location: locationDiff, length: 1))
+            let attachment = NoteAttachment(title: title, path: path, url: imageUrl, invalidateRange: NSRange(location: locationDiff, length: 1))
 
             guard let attachmentText = attachment.getAttributedString() else { return false }
             guard locationDiff < storage.length else { return false }
@@ -1037,49 +1350,58 @@ class EditTextView: NSTextView, NSTextFinderClient {
             textStorage?.deleteCharacters(in: NSRange(location: position, length: 1))
             textStorage?.replaceCharacters(in: NSRange(location: locationDiff, length: 0), with: attachmentText)
 
-            unLoadImages()
+            safeSave(note: note)
             setSelectedRange(NSRange(location: caretLocation, length: 0))
+
+            return true
+        }
+
+        if let archivedData = board.data(forType: NSPasteboard.noteType),
+           let urls = NSKeyedUnarchiver.unarchiveObject(with: archivedData) as? [URL],
+           let url = urls.first,
+           let draggableNote = Storage.shared().getBy(url: url) {
+
+            let replacementRange = NSRange(location: caretLocation, length: 0)
+            let title = "[[" + draggableNote.title + "]]"
+            NSApp.mainWindow?.makeFirstResponder(self)
+
+            DispatchQueue.main.async {
+                self.insertText(title, replacementRange: replacementRange)
+                self.setSelectedRange(NSRange(location: caretLocation + title.count, length: 0))
+
+                self.safeSave(note: note)
+            }
 
             return true
         }
         
         if let urls = board.readObjects(forClasses: [NSURL.self], options: nil) as? [URL],
             urls.count > 0 {
-            
-            let dropPoint = convert(sender.draggingLocation, from: nil)
-            let caretLocation = characterIndexForInsertion(at: dropPoint)
             var offset = 0
 
-            unLoadImages()
-            
+            safeSave(note: note)
+
             for url in urls {
                 do {
                     data = try Data(contentsOf: url)
                 } catch {
                     return false
                 }
-                
-                guard let fileName = ImagesProcessor.writeImage(data: data, url: url, note: note),
-                      let name = fileName.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else
-                {
-                    return false
-                }
 
-                var imagePath = "/i/\(name)"
-                if note.isTextBundle() {
-                    imagePath = "assets/\(name)"
-                }
+                guard let filePath = ImagesProcessor.writeFile(data: data, url: url, note: note) else { return false }
 
                 let insertRange = NSRange(location: caretLocation + offset, length: 0)
 
                 if UserDefaultsManagement.liveImagesPreview {
-                    let cleanPath = imagePath.removingPercentEncoding ?? imagePath
+                    let cleanPath = filePath.removingPercentEncoding ?? filePath
                     guard let url = note.getImageUrl(imageName: cleanPath) else { return false }
 
                     let invalidateRange = NSRange(location: caretLocation + offset, length: 1)
-                    let attachment = ImageAttachment(title: "", path: cleanPath, url: url, cache: nil, invalidateRange: invalidateRange, note: note)
+                    let attachment = NoteAttachment(title: "", path: cleanPath, url: url, invalidateRange: invalidateRange, note: note)
 
                     if let string = attachment.getAttributedString() {
+                        EditTextView.shouldForceRescan = true
+
                         insertText(string, replacementRange: insertRange)
                         insertNewline(nil)
                         insertNewline(nil)
@@ -1087,31 +1409,30 @@ class EditTextView: NSTextView, NSTextFinderClient {
                         offset += 3
                     }
                 } else {
-                    insertText("![](\(imagePath))", replacementRange: insertRange)
+                    insertText("![](\(filePath))", replacementRange: insertRange)
                     insertNewline(nil)
                     insertNewline(nil)
                 }
             }
 
-            NotesTextProcessor.scanBasicSyntax(note: note, storage: textStorage, range: NSRange(0..<storage.length))
-            saveTextStorageContent(to: note)
-            note.save()
+            if let storage = textStorage {
+                NotesTextProcessor.highlightMarkdown(attributedString: storage, note: note)
+                saveTextStorageContent(to: note)
+                note.save()
+            }
 
-            applyLeftParagraphStyle()
             self.viewDelegate?.notesTableView.reloadRow(note: note)
 
             return true
         }
-        
+
         return false
     }
     
-    public func unLoadImages() {
-        guard let note = getSelectedNote() else { return }
+    public func safeSave(note: Note) {
         guard note.container != .encryptedTextPack else { return }
         
-        note.content = NSMutableAttributedString(attributedString:  attributedString())
-        note.save()
+        note.save(attributed: attributedString())
     }
     
     func getSearchText() -> String {
@@ -1138,28 +1459,43 @@ class EditTextView: NSTextView, NSTextFinderClient {
     }
 
     @IBAction func shiftLeft(_ sender: Any) {
-        guard let f = self.getTextFormatter() else { return }
-        
+        guard let note = EditTextView.note else { return }
+        let f = TextFormatter(textView: self, note: note, shouldScanMarkdown: false)
+
+        EditTextView.shouldForceRescan = true
         f.unTab()
     }
     
     @IBAction func shiftRight(_ sender: Any) {
-        guard let f = self.getTextFormatter() else { return }
-        
+        guard let note = EditTextView.note else { return }
+        let f = TextFormatter(textView: self, note: note, shouldScanMarkdown: false)
+
+        EditTextView.shouldForceRescan = true
         f.tab()
     }
-    
-    @IBAction func toggleTodo(_ sender: Any) {
+
+    @IBAction func todo(_ sender: Any) {
         guard let f = self.getTextFormatter() else { return }
-        
-        f.toggleTodo()
+
+        f.todo()
+    }
+
+    @IBAction func wikiLinks(_ sender: Any) {
+        guard let vc = ViewController.shared(),
+            let editArea = vc.editArea,
+            let note = vc.getCurrentNote(),
+            vc.currentPreviewState == .off,
+            editArea.isEditable else { return }
+
+        let formatter = TextFormatter(textView: editArea, note: note)
+        formatter.wikiLink()
     }
 
     @IBAction func pressBold(_ sender: Any) {
         guard let vc = ViewController.shared(),
             let editArea = vc.editArea,
-            let note = getSelectedNote(),
-            !UserDefaultsManagement.preview,
+            let note = vc.getCurrentNote(),
+            vc.currentPreviewState == .off,
             editArea.isEditable else { return }
 
         let formatter = TextFormatter(textView: editArea, note: note)
@@ -1169,23 +1505,16 @@ class EditTextView: NSTextView, NSTextFinderClient {
     @IBAction func pressItalic(_ sender: Any) {
         guard let vc = ViewController.shared(),
             let editArea = vc.editArea,
-            let note = getSelectedNote(),
-            !UserDefaultsManagement.preview,
+            let note = vc.getCurrentNote(),
+            vc.currentPreviewState == .off,
             editArea.isEditable else { return }
 
         let formatter = TextFormatter(textView: editArea, note: note)
         formatter.italic()
     }
     
-    @IBAction func insertMarkdownImage(_ sender: Any) {
+    @IBAction func insertFileOrImage(_ sender: Any) {
         guard let note = EditTextView.note else { return }
-
-        if !UserDefaultsManagement.liveImagesPreview {
-            guard let f = self.getTextFormatter() else { return }
-            f.image()
-
-            return
-        }
 
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = true
@@ -1196,16 +1525,16 @@ class EditTextView: NSTextView, NSTextFinderClient {
             if result.rawValue == NSFileHandlingPanelOKButton {
                 let urls = panel.urls
 
-                let last = urls.last
                 for url in urls {
-                    if self.saveImageUrl(url: url, in: note) {
-                        if last != url {
+                    if self.saveFile(url: url, in: note) {
+                        if urls.count > 1 {
                             self.insertNewline(nil)
-                            if let vc = ViewController.shared() {
-                                vc.notesTableView.reloadRow(note: note)
-                            }
                         }
                     }
+                }
+
+                if let vc = ViewController.shared() {
+                    vc.notesTableView.reloadRow(note: note)
                 }
             }
         }
@@ -1213,15 +1542,95 @@ class EditTextView: NSTextView, NSTextFinderClient {
 
     @IBAction func insertCodeBlock(_ sender: NSButton) {
         let currentRange = selectedRange()
+
+        if currentRange.length > 0 {
+            let mutable = NSMutableAttributedString(string: "```\n")
+            if let substring = attributedSubstring(forProposedRange: currentRange, actualRange: nil) {
+                mutable.append(substring)
+
+                if substring.string.last != "\n" {
+                    mutable.append(NSAttributedString(string: "\n"))
+                }
+            }
+
+            mutable.append(NSAttributedString(string: "```\n"))
+
+            EditTextView.shouldForceRescan = true
+            insertText(mutable, replacementRange: currentRange)
+            setSelectedRange(NSRange(location: currentRange.location + 3, length: 0))
+            
+            return
+        }
+
+        if textStorage?.length == 0 {
+            EditTextView.shouldForceRescan = true
+        }
+        
         insertText("```\n\n```\n", replacementRange: currentRange)
-        setSelectedRange(NSRange(location: currentRange.location + 4, length: 0))
+        setSelectedRange(NSRange(location: currentRange.location + 3, length: 0))
+    }
+
+    @IBAction func insertCodeSpan(_ sender: NSMenuItem) {
+        let currentRange = selectedRange()
+
+        if currentRange.length > 0 {
+            let mutable = NSMutableAttributedString(string: "`")
+            if let substring = attributedSubstring(forProposedRange: currentRange, actualRange: nil) {
+                mutable.append(substring)
+            }
+
+            mutable.append(NSAttributedString(string: "`"))
+
+            EditTextView.shouldForceRescan = true
+            insertText(mutable, replacementRange: currentRange)
+            return
+        }
+
+        insertText("``", replacementRange: currentRange)
+        setSelectedRange(NSRange(location: currentRange.location + 1, length: 0))
+    }
+
+    @IBAction func insertList(_ sender: NSMenuItem) {
+        guard let vc = ViewController.shared(),
+            let editArea = vc.editArea,
+            let note = vc.getCurrentNote(),
+            vc.currentPreviewState == .off,
+            editArea.isEditable
+        else { return }
+
+        let formatter = TextFormatter(textView: editArea, note: note)
+        formatter.list()
+    }
+
+    @IBAction func insertOrderedList(_ sender: NSMenuItem) {
+        guard let vc = ViewController.shared(),
+            let editArea = vc.editArea,
+            let note = vc.getCurrentNote(),
+            vc.currentPreviewState == .off,
+            editArea.isEditable
+        else { return }
+
+        let formatter = TextFormatter(textView: editArea, note: note)
+        formatter.orderedList()
+    }
+
+    @IBAction func insertQuote(_ sender: NSMenuItem) {
+        guard let vc = ViewController.shared(),
+            let editArea = vc.editArea,
+            let note = vc.getCurrentNote(),
+            vc.currentPreviewState == .off,
+            editArea.isEditable
+        else { return }
+
+        let formatter = TextFormatter(textView: editArea, note: note)
+        formatter.quote()
     }
 
     @IBAction func insertLink(_ sender: Any) {
         guard let vc = ViewController.shared(),
             let editArea = vc.editArea,
-            let note = getSelectedNote(),
-            !UserDefaultsManagement.preview,
+            let note = vc.getCurrentNote(),
+            vc.currentPreviewState == .off,
             editArea.isEditable else { return }
 
         let formatter = TextFormatter(textView: editArea, note: note)
@@ -1250,7 +1659,11 @@ class EditTextView: NSTextView, NSTextFinderClient {
         s?.item(withTitle: NSLocalizedString("Text Replacement", comment: ""))?.state = self.isAutomaticTextReplacementEnabled   ? .on : .off
         s?.item(withTitle: NSLocalizedString("Data Detectors", comment: ""))?.state = self.isAutomaticDataDetectionEnabled ? .on : .off
     }
-        
+
+    override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        return true
+    }
+
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
         guard let selected = attributedSubstring(forProposedRange: selectedRange(), actualRange: nil) else { return .generic }
         
@@ -1269,17 +1682,27 @@ class EditTextView: NSTextView, NSTextFinderClient {
     public func applyLeftParagraphStyle() {
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.lineSpacing = CGFloat(UserDefaultsManagement.editorLineSpacing)
-        paragraphStyle.alignment = .left
         typingAttributes[.paragraphStyle] = paragraphStyle
         defaultParagraphStyle = paragraphStyle
         textStorage?.updateParagraphStyle()
     }
     
     override func clicked(onLink link: Any, at charIndex: Int) {
+        if let link = link as? String, link.isValidEmail(), let mail = URL(string: "mailto:\(link)") {
+            NSWorkspace.shared.open(mail)
+            return
+        }
+
         let range = NSRange(location: charIndex, length: 1)
         
         let char = attributedSubstring(forProposedRange: range, actualRange: nil)
         if char?.attribute(.attachment, at: 0, effectiveRange: nil) == nil {
+
+            if NSEvent.modifierFlags.contains(.command), let link = link as? String, let url = URL(string: link) {
+                _ = try? NSWorkspace.shared.open(url, options: .withoutActivation, configuration: [:])
+                return
+            }
+
             super.clicked(onLink: link, at: charIndex)
             return
         }
@@ -1296,11 +1719,20 @@ class EditTextView: NSTextView, NSTextFinderClient {
         if let event = NSApp.currentEvent,
             !event.modifierFlags.contains(.command),
             let note = EditTextView.note,
-            !note.isEncrypted(),
-            let path = char?.attribute(pathKey, at: 0, effectiveRange: nil) as? String,
+            let path = (char?.attribute(pathKey, at: 0, effectiveRange: nil) as? String)?.removingPercentEncoding,
             let url = note.getImageUrl(imageName: path) {
 
-            NSWorkspace.shared.openFile(url.path, withApplication: "Preview", andDeactivate: true)
+            if !url.isImage {
+                NSWorkspace.shared.activateFileViewerSelecting([url])
+                return
+            }
+
+            let isOpened = NSWorkspace.shared.openFile(url.path, withApplication: "Preview", andDeactivate: true)
+
+            if isOpened { return }
+
+            let url = URL(fileURLWithPath: url.path)
+            NSWorkspace.shared.open(url)
             return
         }
 
@@ -1315,8 +1747,7 @@ class EditTextView: NSTextView, NSTextFinderClient {
             field.stringValue = title
         }
         
-        vc.alert?.messageText = NSLocalizedString("Image title", comment: "Edit area")
-        vc.alert?.informativeText = NSLocalizedString("Please enter image title:", comment: "Edit area")
+        vc.alert?.messageText = NSLocalizedString("Please enter image title:", comment: "Edit area")
         vc.alert?.accessoryView = field
         vc.alert?.alertStyle = .informational
         vc.alert?.addButton(withTitle: "OK")
@@ -1325,8 +1756,7 @@ class EditTextView: NSTextView, NSTextFinderClient {
                 self.textStorage?.addAttribute(titleKey, value: field.stringValue, range: range)
                 
                 if let note = vc.notesTableView.getSelectedNote(), note.container != .encryptedTextPack {
-                    note.content = NSMutableAttributedString(attributedString: self.attributedString())
-                    note.save()
+                    note.save(attributed: self.attributedString())
                 }
             }
             
@@ -1338,15 +1768,18 @@ class EditTextView: NSTextView, NSTextFinderClient {
     }
 
     override func viewDidChangeEffectiveAppearance() {
-        self.storage.fullCacheReset()
-
         guard let note = EditTextView.note else { return }
         
         UserDataService.instance.isDark = effectiveAppearance.isDark
         UserDefaultsManagement.codeTheme = effectiveAppearance.isDark ? "monokai-sublime" : "atom-one-light"
 
+        // clear preview cache
+        MPreviewView.template = nil
+        let webkitPreview = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("wkPreview")
+        try? FileManager.default.removeItem(at: webkitPreview)
+
         NotesTextProcessor.hl = nil
-        NotesTextProcessor.fullScan(note: note)
+        NotesTextProcessor.highlight(note: note)
 
         let funcName = effectiveAppearance.isDark ? "switchToDarkMode" : "switchToLightMode"
         let switchScript = "if (typeof(\(funcName)) == 'function') { \(funcName)(); }"
@@ -1354,43 +1787,58 @@ class EditTextView: NSTextView, NSTextFinderClient {
         downView?.evaluateJavaScript(switchScript)
 
         // TODO: implement code block live theme changer
-        viewDelegate?.refillEditArea()
+        viewDelegate?.refillEditArea(force: true)
     }
 
     private func pasteImageFromClipboard(in note: Note) -> Bool {
         if let url = NSURL(from: NSPasteboard.general) {
-            return saveImageUrl(url: url as URL, in: note)
+            if !url.isFileURL {
+                return false
+            }
+
+            return saveFile(url: url as URL, in: note)
         }
 
         if let clipboard = NSPasteboard.general.data(forType: .tiff), let image = NSImage(data: clipboard), let jpgData = image.jpgData {
-            saveImageClipboard(data: jpgData, note: note)
+            EditTextView.shouldForceRescan = true
+
+            saveClipboard(data: jpgData, note: note)
             saveTextStorageContent(to: note)
             note.save()
 
-            textStorage?.sizeAttachmentImages()
+            if let container = textContainer {
+                textStorage?.sizeAttachmentImages(container: container)
+            }
             return true
         }
 
         return false
     }
 
-    private func saveImageUrl(url: URL, in note: Note) -> Bool {
-        if let data = try? Data(contentsOf: url), let _ = NSImage(data: data) {
+    private func saveFile(url: URL, in note: Note) -> Bool {
+        if let data = try? Data(contentsOf: url) {
+            var ext: String?
 
-            var ext = "jpg"
-            if let source = CGImageSourceCreateWithData(data as CFData, nil) {
-                let uti = CGImageSourceGetType(source)
+            if let _ = NSImage(data: data) {
+                ext = "jpg"
+                if let source = CGImageSourceCreateWithData(data as CFData, nil) {
+                    let uti = CGImageSourceGetType(source)
 
-                if let fileExtension = (uti as String?)?.utiFileExtension {
-                    ext = fileExtension
+                    if let fileExtension = (uti as String?)?.utiFileExtension {
+                        ext = fileExtension
+                    }
                 }
             }
 
-            saveImageClipboard(data: data, note: note, ext: ext)
+            EditTextView.shouldForceRescan = true
+
+            saveClipboard(data: data, note: note, ext: ext, url: url)
             saveTextStorageContent(to: note)
             note.save()
 
-            textStorage?.sizeAttachmentImages()
+            if let container = textContainer {
+                textStorage?.sizeAttachmentImages(container: container)
+            }
 
             return true
         }
@@ -1398,9 +1846,8 @@ class EditTextView: NSTextView, NSTextFinderClient {
         return false
     }
 
-    private func saveImageClipboard(data: Data, note: Note, ext: String? = nil) {
-        if let string = ImagesProcessor.writeImage(data: data, note: note, ext: ext) {
-            let path = note.getMdImagePath(name: string)
+    private func saveClipboard(data: Data, note: Note, ext: String? = nil, url: URL? = nil) {
+        if let path = ImagesProcessor.writeFile(data: data, url: url, note: note, ext: ext) {
 
             guard UserDefaultsManagement.liveImagesPreview else {
                 let newLineImage = NSAttributedString(string: "![](\(path))")
@@ -1410,20 +1857,19 @@ class EditTextView: NSTextView, NSTextFinderClient {
                 return
             }
 
+            guard let path = path.removingPercentEncoding else { return }
+            
             if let imageUrl = note.getImageUrl(imageName: path) {
                 let range = NSRange(location: selectedRange.location, length: 1)
-                let attachment = ImageAttachment(title: "", path: path, url: imageUrl, cache: nil, invalidateRange: range, note: note)
+                let attachment = NoteAttachment(title: "", path: path, url: imageUrl, invalidateRange: range, note: note)
 
                 if let attributedString = attachment.getAttributedString() {
                     let newLineImage = NSMutableAttributedString(attributedString: attributedString)
-                    newLineImage.append(NSAttributedString(string: "\n"))
 
                     self.breakUndoCoalescing()
                     self.insertText(newLineImage, replacementRange: selectedRange())
+                    self.insertNewline(nil)
                     self.breakUndoCoalescing()
-
-                    applyLeftParagraphStyle()
-
                     return
                 }
             }
@@ -1431,23 +1877,23 @@ class EditTextView: NSTextView, NSTextFinderClient {
     }
 
     public func updateTextContainerInset() {
+        textContainerInset.width = getWidth()
+    }
+
+    public func getWidth() -> CGFloat {
         let lineWidth = UserDefaultsManagement.lineWidth
         let margin = UserDefaultsManagement.marginSize
         let width = frame.width
 
         if lineWidth == 1000 {
-            textContainerInset.width = CGFloat(margin)
-            return
+            return CGFloat(margin)
         }
 
         guard Float(width) - margin * 2 > lineWidth else {
-            textContainerInset.width = CGFloat(margin)
-            return
+            return CGFloat(margin)
         }
 
-        let inset = (Float(width) - lineWidth) / 2
-        
-        textContainerInset.width = CGFloat(inset)
+        return CGFloat((Float(width) - lineWidth) / 2)
     }
 
     private func deleteUnusedImages(checkRange: NSRange) {
@@ -1467,12 +1913,11 @@ class EditTextView: NSTextView, NSTextFinderClient {
                         guard let imageURL = note.getImageUrl(imageName: filePath) else { return }
 
                         do {
-                            var resultingItemUrl: NSURL?
-                            try FileManager.default.trashItem(at: imageURL, resultingItemURL: &resultingItemUrl)
+                            guard let resultingItemUrl = Storage.sharedInstance().trashItem(url: imageURL) else { return }
 
-                            if let result = resultingItemUrl {
-                                removedImages[result as URL] = imageURL
-                            }
+                            try FileManager.default.moveItem(at: imageURL, to: resultingItemUrl)
+
+                            removedImages[resultingItemUrl] = imageURL
                         } catch {
                             print(error)
                         }
@@ -1481,8 +1926,9 @@ class EditTextView: NSTextView, NSTextFinderClient {
             }
         }
 
-        note.undoManager.registerUndo(withTarget: self, selector: #selector(unDeleteImages), object: removedImages)
-        note.undoManager.setActionName(NSLocalizedString("Delete Images", comment: ""))
+        if removedImages.count > 0 {
+            note.undoManager.registerUndo(withTarget: self, selector: #selector(unDeleteImages), object: removedImages)
+        }
     }
 
     @objc public func unDeleteImages(_ urls: [URL: URL]) {
@@ -1499,21 +1945,18 @@ class EditTextView: NSTextView, NSTextFinderClient {
     override func makeTouchBar() -> NSTouchBar? {
         let touchBar = NSTouchBar()
         touchBar.delegate = self
-
-        //touchBar.customizationIdentifier = NSTouchBar.CustomizationIdentifier("My First TouchBar")
         touchBar.defaultItemIdentifiers = [
             NSTouchBarItem.Identifier("Todo"),
             NSTouchBarItem.Identifier("Bold"),
             NSTouchBarItem.Identifier("Italic"),
             .fixedSpaceSmall,
             NSTouchBarItem.Identifier("Link"),
-            NSTouchBarItem.Identifier("Image"),
+            NSTouchBarItem.Identifier("Image or file"),
             NSTouchBarItem.Identifier("CodeBlock"),
             .fixedSpaceSmall,
             NSTouchBarItem.Identifier("Indent"),
             NSTouchBarItem.Identifier("UnIndent")
         ]
-        //touchBar.customizationAllowedItemIdentifiers = [NSTouchBarItem.Identifier("HelloWorld")]
         return touchBar
     }
 
@@ -1521,10 +1964,10 @@ class EditTextView: NSTextView, NSTextFinderClient {
     override func touchBar(_ touchBar: NSTouchBar, makeItemForIdentifier identifier: NSTouchBarItem.Identifier) -> NSTouchBarItem? {
         switch identifier {
         case NSTouchBarItem.Identifier("Todo"):
-            if let im = NSImage(named: "todo") {
+            if let im = NSImage(named: "todo"), im.isValid, im.size.height > 0 {
                 let image = im.tint(color: NSColor.white)
                 image.size = NSSize(width: 20, height: 20)
-                let button = NSButton(image: image, target: self, action: #selector(toggleTodo(_:)))
+                let button = NSButton(image: image, target: self, action: #selector(todo(_:)))
                 button.bezelColor = NSColor(red:0.21, green:0.21, blue:0.21, alpha:1.0)
 
                 let customViewItem = NSCustomTouchBarItem(identifier: identifier)
@@ -1532,7 +1975,7 @@ class EditTextView: NSTextView, NSTextFinderClient {
                 return customViewItem
             }
         case NSTouchBarItem.Identifier("Bold"):
-            if let im = NSImage(named: "bold") {
+            if let im = NSImage(named: "bold"), im.isValid, im.size.height > 0 {
                 let image = im.tint(color: NSColor.white)
                 image.size = NSSize(width: 20, height: 20)
                 let button = NSButton(image: image, target: self, action: #selector(pressBold(_:)))
@@ -1543,7 +1986,7 @@ class EditTextView: NSTextView, NSTextFinderClient {
                 return customViewItem
             }
         case NSTouchBarItem.Identifier("Italic"):
-            if let im = NSImage(named: "italic") {
+            if let im = NSImage(named: "italic"), im.isValid, im.size.height > 0 {
                 let image = im.tint(color: NSColor.white)
                 image.size = NSSize(width: 20, height: 20)
                 let button = NSButton(image: image, target: self, action: #selector(pressItalic(_:)))
@@ -1553,11 +1996,11 @@ class EditTextView: NSTextView, NSTextFinderClient {
                 customViewItem.view = button
                 return customViewItem
             }
-        case NSTouchBarItem.Identifier("Image"):
-            if let im = NSImage(named: "image") {
+        case NSTouchBarItem.Identifier("Image or file"):
+            if let im = NSImage(named: "image"), im.isValid, im.size.height > 0 {
                 let image = im.tint(color: NSColor.white)
                 image.size = NSSize(width: 20, height: 20)
-                let button = NSButton(image: image, target: self, action: #selector(insertMarkdownImage(_:)))
+                let button = NSButton(image: image, target: self, action: #selector(insertFileOrImage(_:)))
                 button.bezelColor = NSColor(red:0.21, green:0.21, blue:0.21, alpha:1.0)
 
                 let customViewItem = NSCustomTouchBarItem(identifier: identifier)
@@ -1566,7 +2009,7 @@ class EditTextView: NSTextView, NSTextFinderClient {
             }
 
         case NSTouchBarItem.Identifier("Indent"):
-            if let im = NSImage(named: "indent") {
+            if let im = NSImage(named: "indent"), im.isValid, im.size.height > 0 {
                 let image = im.tint(color: NSColor.white)
                 image.size = NSSize(width: 20, height: 20)
                 let button = NSButton(image: image, target: self, action: #selector(shiftRight(_:)))
@@ -1578,7 +2021,7 @@ class EditTextView: NSTextView, NSTextFinderClient {
             }
 
         case NSTouchBarItem.Identifier("UnIndent"):
-            if let im = NSImage(named: "unindent") {
+            if let im = NSImage(named: "unindent"), im.isValid, im.size.height > 0 {
                 let image = im.tint(color: NSColor.white)
                 image.size = NSSize(width: 20, height: 20)
                 let button = NSButton(image: image, target: self, action: #selector(shiftLeft(_:)))
@@ -1589,7 +2032,7 @@ class EditTextView: NSTextView, NSTextFinderClient {
                 return customViewItem
             }
         case NSTouchBarItem.Identifier("CodeBlock"):
-            if let im = NSImage(named: "codeblock") {
+            if let im = NSImage(named: "codeblock"), im.isValid, im.size.height > 0 {
                 let image = im.tint(color: NSColor.white)
                 image.size = NSSize(width: 20, height: 20)
                 let button = NSButton(image: image, target: self, action: #selector(insertCodeBlock(_:)))
@@ -1600,7 +2043,7 @@ class EditTextView: NSTextView, NSTextFinderClient {
                 return customViewItem
             }
         case NSTouchBarItem.Identifier("Link"):
-            if let im = NSImage(named: "link") {
+            if let im = NSImage(named: "tb_link"), im.isValid, im.size.height > 0 {
                 let image = im.tint(color: NSColor.white)
                 image.size = NSSize(width: 20, height: 20)
                 let button = NSButton(image: image, target: self, action: #selector(insertLink(_:)))
@@ -1614,5 +2057,60 @@ class EditTextView: NSTextView, NSTextFinderClient {
         }
 
         return super.touchBar(touchBar, makeItemForIdentifier: identifier)
+    }
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        let menu = super.menu(for: event)
+
+        let editTitle = NSLocalizedString("Edit Link…", comment: "")
+        if let editLink = menu?.item(withTitle: editTitle) {
+            menu?.removeItem(editLink)
+        }
+
+        let removeTitle = NSLocalizedString("Remove Link", comment: "")
+        if let removeLink = menu?.item(withTitle: removeTitle) {
+            menu?.removeItem(removeLink)
+        }
+
+        return menu
+    }
+
+    /**
+     Handoff methods
+     */
+    override func updateUserActivityState(_ userActivity: NSUserActivity) {
+        guard let note = EditTextView.note else { return }
+
+        let position =
+            window?.firstResponder == self ? selectedRange().location : -1
+        let state = viewDelegate?.currentPreviewState == .on ? "preview" : "editor"
+        let data =
+            [
+                "note-file-name": note.name,
+                "position": String(position),
+                "state": state
+            ]
+
+        userActivity.addUserInfoEntries(from: data)
+    }
+
+    override func resignFirstResponder() -> Bool {
+        userActivity?.needsSave = true
+
+        return super.resignFirstResponder()
+    }
+
+    public func registerHandoff(note: Note) {
+        self.userActivity?.invalidate()
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            let updateDict:  [String: String] = ["note-file-name": note.name]
+            let activity = NSUserActivity(activityType: "es.fsnot.handoff-open-note")
+            activity.isEligibleForHandoff = true
+            activity.userInfo = updateDict
+            activity.title = NSLocalizedString("Open note", comment: "Document opened")
+            self.userActivity = activity
+            self.userActivity?.becomeCurrent()
+        }
     }
 }

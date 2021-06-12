@@ -14,8 +14,10 @@ class PreferencesUserInterfaceViewController: NSViewController {
     @IBOutlet weak var verticalRadio: NSButton!
     @IBOutlet weak var fontPreview: NSTextField!
     @IBOutlet weak var cellSpacing: NSSlider!
+    @IBOutlet weak var noteFontLabel: NSTextField!
     @IBOutlet weak var noteFontColor: NSColorWell!
     @IBOutlet weak var backgroundColor: NSColorWell!
+    @IBOutlet weak var backgroundLabel: NSTextField!
     @IBOutlet weak var textMatchAutoSelection: NSButton!
     @IBOutlet weak var previewFontSize: NSPopUpButton!
     @IBOutlet weak var hideImagesPreview: NSButton!
@@ -25,16 +27,22 @@ class PreferencesUserInterfaceViewController: NSViewController {
 
     override func viewWillAppear() {
         super.viewWillAppear()
-        preferredContentSize = NSSize(width: 467, height: 460)
+        preferredContentSize = NSSize(width: 476, height: 460)
     }
 
     override func viewDidLoad() {
         super.viewDidLoad()
         setFontPreview()
+
+        let hideBackgroundOption = UserDefaultsManagement.appearanceType != .Custom
+
+        backgroundColor.isHidden = hideBackgroundOption
+        backgroundLabel.isHidden = hideBackgroundOption
     }
 
     override func viewDidAppear() {
-        self.view.window!.title = NSLocalizedString("Preferences", comment: "")
+        guard let window = self.view.window else { return }
+        window.title = NSLocalizedString("Preferences", comment: "")
 
         if (UserDefaultsManagement.horizontalOrientation) {
             horizontalRadio.cell?.state = NSControl.StateValue(rawValue: 1)
@@ -58,12 +66,22 @@ class PreferencesUserInterfaceViewController: NSViewController {
         hideDate.state = UserDefaultsManagement.hideDate ? .on : .off
 
         firstLineAsTitle.state = UserDefaultsManagement.firstLineAsTitle ? .on : .off
+
+        backgroundColor.isHidden = false
+        backgroundLabel.isHidden = false
+
+        noteFontColor.isHidden = false
+        noteFontLabel.isHidden = false
     }
 
     @IBAction func changeHideOnDeactivate(_ sender: NSButton) {
         // We don't need to set the user defaults value here as the checkbox is
         // bound to it. We do need to update each window's hideOnDeactivate.
         for window in NSApplication.shared.windows {
+            if window.className == "NSStatusBarWindow" {
+                continue
+            }
+
             window.hidesOnDeactivate = UserDefaultsManagement.hideOnDeactivate
         }
     }
@@ -111,22 +129,21 @@ class PreferencesUserInterfaceViewController: NSViewController {
     @IBAction func setFontColor(_ sender: NSColorWell) {
         guard let vc = ViewController.shared() else { return }
 
+        UserDefaultsManagement.appearanceType = .Custom
         UserDefaultsManagement.fontColor = sender.color
         vc.editArea.setEditorTextColor(sender.color)
-
-        if let note = EditTextView.note {
-            Storage.sharedInstance().fullCacheReset()
-            note.reCache()
-            vc.refillEditArea()
-        }
+        vc.refillEditArea()
     }
 
     @IBAction func setBgColor(_ sender: NSColorWell) {
         guard let vc = ViewController.shared() else { return }
 
+        UserDefaultsManagement.appearanceType = .Custom
         UserDefaultsManagement.bgColor = sender.color
 
         vc.editArea.backgroundColor = sender.color
+        vc.titleBarView?.layer?.backgroundColor = sender.color.cgColor
+        vc.titleLabel.backgroundColor = sender.color
     }
 
     @IBAction func changeCellSpacing(_ sender: NSSlider) {
@@ -194,13 +211,15 @@ class PreferencesUserInterfaceViewController: NSViewController {
         let newFont = fontManager.convert(UserDefaultsManagement.noteFont!)
         UserDefaultsManagement.noteFont = newFont
 
-        if let note = EditTextView.note {
-            Storage.sharedInstance().fullCacheReset()
-            note.reCache()
-            vc.refillEditArea()
-        }
+        let webkitPreview = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("wkPreview")
+        try? FileManager.default.removeItem(at: webkitPreview)
 
-        vc.reloadView()
+        MPreviewView.template = nil
+        NotesTextProcessor.hl = nil
+
+        vc.editArea.clear()
+        vc.refillEditArea(force: true)
+
         setFontPreview()
     }
 
@@ -209,4 +228,13 @@ class PreferencesUserInterfaceViewController: NSViewController {
         fontPreview.stringValue = "\(UserDefaultsManagement.noteFont.fontName) \(UserDefaultsManagement.noteFont.pointSize)pt"
     }
 
+    private func restart() {
+        let url = URL(fileURLWithPath: Bundle.main.resourcePath!)
+        let path = url.deletingLastPathComponent().deletingLastPathComponent().absoluteString
+        let task = Process()
+        task.launchPath = "/usr/bin/open"
+        task.arguments = [path]
+        task.launch()
+        exit(0)
+    }
 }

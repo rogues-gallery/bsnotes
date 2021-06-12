@@ -11,10 +11,16 @@
 "Are you sure you want to remove project \"%@\" and all files inside?" = "Вы впевнені що хочете видалити директорію \"%@\"?";
 
 /* No comment provided by engineer. */
-"Attach storage" = "Підключити сховище";
+"Attach storage..." = "Підключити сховище...";
+
+/* No comment provided by engineer. */
+"Back up storage" = "Зробити резервну копію";
 
 /* Delete menu */
 "Cancel" = "Відміна";
+
+/* Menu */
+"Change creation date" = "Змінити дату створення";
 
 /* No comment provided by engineer. */
 "Check Grammar With Spelling" = "Перевіряти граматику та правопис";
@@ -24,6 +30,9 @@
 
 /* No comment provided by engineer. */
 "Code Block" = "Блок коду";
+
+/* No comment provided by engineer. */
+"Code Span" = "Проміжок коду";
 
 /* No comment provided by engineer. */
 "Copy HTML" = "Скопіювати HTML";
@@ -37,6 +46,9 @@
 /* No comment provided by engineer. */
 "Correct Spelling Automatically" = "Автоматично коригувати правописання";
 
+/* Menu */
+"Creation date:" = "Creation date:";
+
 /* No comment provided by engineer. */
 "Current password does not match with password in keychain" = "Пароль не співпадає з паролем у зв'язці";
 
@@ -44,13 +56,31 @@
 "Data Detectors" = "Детектори даних";
 
 /* No comment provided by engineer. */
+"Default storage path should not be equal to Git path." = "Default storage path should not be equal to Git path.";
+
+/* No comment provided by engineer. */
 "Delete" = "Видалити";
+
+/* No comment provided by engineer. */
+"Delete folder" = "Видалити директорію";
+
+/* No comment provided by engineer. */
+"Detach storage" = "Відключити сховище";
+
+/* No comment provided by engineer. */
+"Do you want to move current notes in the new destination?" = "Ви хочете перемістити поточні нотатки до нового сховища?";
+
+/* No comment provided by engineer. */
+"Edit Link…" = "Edit Link…";
 
 /* No comment provided by engineer. */
 "Empty password" = "Введіть пароль";
 
 /* No comment provided by engineer. */
 "Enter Master Password" = "Введіть мастер пароль";
+
+/* No comment provided by engineer. */
+"File with name \"\(currentTitle)\" already exists!" = "File with name \"\(currentTitle)\" already exists!";
 
 /* No comment provided by engineer. */
 "FSNotes [edit]" = "FSNotes [редагування]";
@@ -77,10 +107,16 @@
 "Header 6" = "Заголовок 6";
 
 /* No comment provided by engineer. */
-"Image" = "Зображення";
+"History" = "Історія";
 
-/* Edit area */
-"Image title" = "Заголовок зображення";
+/* No comment provided by engineer. */
+"Image or file" = "Image or file";
+
+/* No comment provided by engineer. */
+"Inbox" = "Вхідні";
+
+/* No comment provided by engineer. */
+"Incorrect file name" = "Incorrect file name";
 
 /* No comment provided by engineer. */
 "Link" = "Посилання";
@@ -106,9 +142,23 @@
 /* No comment provided by engineer. */
 "New RTF" = "Новий RTF";
 
-/* Rename
-   Sidebar label */
+/* No comment provided by engineer. */
+"No" = "Ні";
+
+/* Sidebar label */
 "Notes" = "Нотатки";
+
+/* No comment provided by engineer. */
+"OK" = "OK";
+
+/* Document opened */
+"Open note" = "Open note";
+
+/* No comment provided by engineer. */
+"Otherwise, the database of your notes will be available at: " = "Інакше база даних ваших нотаток буде доступна за адресою: ";
+
+/* No comment provided by engineer. */
+"Path not available" = "Path not available";
 
 /* Edit area */
 "Please enter image title:" = "Заголовок зображення:";
@@ -135,13 +185,22 @@
 "Remove" = "Видалити";
 
 /* No comment provided by engineer. */
+"Remove Link" = "Remove Link";
+
+/* No comment provided by engineer. */
 "Remove note(s)" = "Видалити нотатку(ок)";
 
 /* No comment provided by engineer. */
-"Reveal folder" = "Показати директорію";
+"Rename folder" = "Перейменувати директорію";
 
 /* No comment provided by engineer. */
 "Search and create" = "Знайти або створити";
+
+/* No comment provided by engineer. */
+"Show in Finder" = "Показати в Finder";
+
+/* No comment provided by engineer. */
+"Show view options" = "Налаштування вигляду";
 
 /* No comment provided by engineer. */
 "Smart Copy/Paste" = "Розумне копіювання/вставка";
@@ -156,13 +215,10 @@
 "Smart Quotes" = "Розумні лапки";
 
 /* View menu */
-"Sort By" = "Сортувати за";
+"Sort by" = "Сортувати за";
 
 /* No comment provided by engineer. */
 "Spelling and Grammar" = "Орфографія і граматика";
-
-/* No comment provided by engineer. */
-"Strikethrough" = "Перекреслений";
 
 /* No comment provided by engineer. */
 "Substitutions" = "Заміни";
@@ -199,5 +255,21 @@
 "View" = "Вид";
 
 /* No comment provided by engineer. */
+"We are detect that you are install FSNotes from Mac App Store with default storage in iCloud Drive, do you want to move old database in iCloud Drive?" = "Ми виявили, що ви встановили FSNotes з Mac App Store із зберіганням за замовчуванням в iCloud Drive, хочете перенести стару базу даних в iCloud Drive?";
+
+/* No comment provided by engineer. */
+"We can not move \"{DST_PATH}\" because this item already exist in selected destination." = "Ми не можемо перемістити \\\"{DST_PATH}\\\", оскільки цей елемент вже існує у вибраному сховищі.";
+
+/* No comment provided by engineer. */
 "Wrong repeated password" = "Паролі не співпадають";
 
+/* No comment provided by engineer. */
+"Yes" = "Так";
+
+"Attach storage" = "";
+
+"Hmm, something goes wrong 🙈" = "";
+
+"Note with name \"%@\" already exists in selected storage." = "";
+
+"Sort By" = "";

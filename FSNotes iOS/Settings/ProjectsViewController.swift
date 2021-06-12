@@ -28,7 +28,7 @@ class ProjectsViewController: UITableViewController, UIDocumentPickerDelegate {
         navigationController?.navigationBar.mixedTitleTextAttributes = [NNForegroundColorAttributeName: Colors.titleText]
         navigationController?.navigationBar.mixedBarTintColor = Colors.Header
 
-        view.mixedBackgroundColor = MixedColor(normal: 0xffffff, night: 0x2e2c32)
+        view.mixedBackgroundColor = MixedColor(normal: 0xffffff, night: 0x000000)
 
         self.navigationItem.leftBarButtonItem = Buttons.getBack(target: self, selector: #selector(cancel))
 
@@ -46,7 +46,7 @@ class ProjectsViewController: UITableViewController, UIDocumentPickerDelegate {
         self.navigationItem.rightBarButtonItems = buttons
 
         self.projects = Storage.sharedInstance().getProjects()
-        self.title = "Projects"
+        self.title = NSLocalizedString("Projects", comment: "Settings")
 
         super.viewDidLoad()
     }
@@ -81,7 +81,7 @@ class ProjectsViewController: UITableViewController, UIDocumentPickerDelegate {
     }
 
     override func tableView(_ tableView: UITableView, willDisplay cell: UITableViewCell, forRowAt indexPath: IndexPath) {
-        cell.mixedBackgroundColor = MixedColor(normal: 0xffffff, night: 0x2e2c32)
+        cell.mixedBackgroundColor = MixedColor(normal: 0xffffff, night: 0x000000)
         cell.textLabel?.mixedTextColor = MixedColor(normal: 0x000000, night: 0xffffff)
     }
 
@@ -92,7 +92,7 @@ class ProjectsViewController: UITableViewController, UIDocumentPickerDelegate {
     override func tableView(_ tableView: UITableView, editActionsForRowAt indexPath: IndexPath) -> [UITableViewRowAction]? {
         let project = self.projects[indexPath.row]
 
-        if project.isRoot && project.isDefault {
+        if project.isDefault {
             return nil
         }
 
@@ -100,7 +100,7 @@ class ProjectsViewController: UITableViewController, UIDocumentPickerDelegate {
             return nil
         }
 
-        let deleteAction = UITableViewRowAction(style: .default, title: "Delete", handler: { (action , indexPath) -> Void in
+        let deleteAction = UITableViewRowAction(style: .default, title: NSLocalizedString("Delete", comment: ""), handler: { (action , indexPath) -> Void in
             self.delete(project: project)
         })
 
@@ -114,7 +114,7 @@ class ProjectsViewController: UITableViewController, UIDocumentPickerDelegate {
     }
 
     @objc func newAlert() {
-        let alertController = UIAlertController(title: "Folder name:", message: nil, preferredStyle: .alert)
+        let alertController = UIAlertController(title: NSLocalizedString("Folder name:", comment: ""), message: nil, preferredStyle: .alert)
 
         alertController.addTextField { (textField) in
             textField.placeholder = ""
@@ -126,14 +126,14 @@ class ProjectsViewController: UITableViewController, UIDocumentPickerDelegate {
             }
 
             guard self.projects.first(where: { $0.label == name } ) == nil else {
-                let alert = UIAlertController(title: "Oops 👮‍♂️", message: "Folder with this name already exist", preferredStyle: UIAlertController.Style.alert)
+                let alert = UIAlertController(title: "Oops 👮‍♂️", message: NSLocalizedString("Folder with this name already exist", comment: ""), preferredStyle: UIAlertController.Style.alert)
                 alert.addAction(UIAlertAction(title: "OK", style: UIAlertAction.Style.default, handler: nil))
 
                 self.present(alert, animated: true, completion: nil)
                 return
             }
 
-            guard let newDir = UserDefaultsManagement.storageUrl?.appendingPathComponent(name) else { return }
+            guard let newDir = UserDefaultsManagement.storageUrl?.appendingPathComponent(name, isDirectory: true) else { return }
 
             do {
                 try FileManager.default.createDirectory(at: newDir, withIntermediateDirectories: false, attributes: nil)
@@ -142,20 +142,27 @@ class ProjectsViewController: UITableViewController, UIDocumentPickerDelegate {
                 return
             }
 
-            let project = Project(url: newDir, label: name, isTrash: false, isRoot: false, parent: self.projects.first!, isDefault: false, isArchive: false)
+            let storage = Storage.shared()
+            let project = Project(
+                storage: storage,
+                url: newDir,
+                label: name,
+                isTrash: false,
+                isRoot: false,
+                parent: self.projects.first!,
+                isDefault: false,
+                isArchive: false
+            )
 
-            self.projects.append(project)
+            storage.assignTree(for: project)
             self.tableView.reloadData()
 
-            _ = Storage.sharedInstance().add(project: project)
-
             if let mvc = self.getMainVC() {
-                mvc.sidebarTableView.sidebar = Sidebar()
-                mvc.sidebarTableView.reloadData()
+                mvc.sidebarTableView.insertRows(projects: [project])
             }
         }
 
-        let cancelAction = UIAlertAction(title: "Cancel", style: .cancel) { (_) in }
+        let cancelAction = UIAlertAction(title: NSLocalizedString("Cancel", comment: ""), style: .cancel) { (_) in }
 
         alertController.addAction(confirmAction)
         alertController.addAction(cancelAction)
@@ -174,10 +181,11 @@ class ProjectsViewController: UITableViewController, UIDocumentPickerDelegate {
     }
 
     public func getMainVC() -> ViewController? {
-        guard let pageController = UIApplication.shared.windows[0].rootViewController as? PageViewController, let mvc = pageController.mainViewController
+        guard let pc = UIApplication.shared.windows[0].rootViewController as? BasicViewController,
+            let vc = pc.containerController.viewControllers[0] as? ViewController
         else { return nil }
 
-        return mvc
+        return vc
     }
 
     private func delete(project: Project) {
@@ -190,14 +198,14 @@ class ProjectsViewController: UITableViewController, UIDocumentPickerDelegate {
 
         let message = "Are you sure you want to remove project \"\(project.getFullLabel())\" and all files inside?"
 
-        let alertController = UIAlertController(title: "Project removing ❌", message: message, preferredStyle: .alert)
+        let alertController = UIAlertController(title: NSLocalizedString("Project removing ❌", comment: ""), message: message, preferredStyle: .alert)
 
         let confirmAction = UIAlertAction(title: "OK", style: .default) { (_) in
             project.remove()
             self.removeProject(project: project)
         }
 
-        let cancelAction = UIAlertAction(title: "Cancel", style: .cancel) { (_) in }
+        let cancelAction = UIAlertAction(title: NSLocalizedString("Cancel", comment: ""), style: .cancel) { (_) in }
 
         alertController.addAction(confirmAction)
         alertController.addAction(cancelAction)
@@ -213,10 +221,9 @@ class ProjectsViewController: UITableViewController, UIDocumentPickerDelegate {
         self.tableView.reloadData()
         Storage.sharedInstance().removeBy(project: project)
 
-        if let mvc = self.getMainVC() {
-            mvc.updateTable {
-                mvc.sidebarTableView.sidebar = Sidebar()
-                mvc.sidebarTableView.reloadData()
+        if let vc = self.getMainVC() {
+            vc.reloadNotesTable() {
+                vc.sidebarTableView.removeRows(projects: [project])
             }
         }
     }
@@ -235,14 +242,21 @@ class ProjectsViewController: UITableViewController, UIDocumentPickerDelegate {
             SandboxBookmark.sharedInstance().save(data: bookmarkData)
 
             let storage = Storage.sharedInstance()
-            let project = Project(url: url, label: url.lastPathComponent, isTrash: false, isRoot: true, isDefault: false, isArchive: false, isExternal: true)
+            let project = Project(
+                storage: storage,
+                url: url,
+                label: url.lastPathComponent,
+                isTrash: false,
+                isRoot: true,
+                isDefault: false,
+                isArchive: false,
+                isExternal: true
+            )
 
-            _ = storage.add(project: project)
-            storage.loadLabel(project)
+            storage.assignTree(for: project)
+            storage.loadLabel(project, loadContent: true)
 
-            let vc = UIApplication.getVC()
-            vc.sidebarTableView.sidebar = Sidebar()
-            vc.sidebarTableView.reloadData()
+            UIApplication.getVC().sidebarTableView.insertRows(projects: [project])
 
             self.projects.append(project)
             self.tableView.reloadData()

@@ -11,10 +11,16 @@
 "Are you sure you want to remove project \"%@\" and all files inside?" = "Вы уверены что хотите удалить директорию \"%@\"?";
 
 /* No comment provided by engineer. */
-"Attach storage" = "Подключить хранилище";
+"Attach storage..." = "Подключить хранилище...";
+
+/* No comment provided by engineer. */
+"Back up storage" = "Создать резервную копию";
 
 /* Delete menu */
 "Cancel" = "Отмена";
+
+/* Menu */
+"Change creation date" = "Изменить дату создания";
 
 /* No comment provided by engineer. */
 "Check Grammar With Spelling" = "Проверить грамматику с орфографией";
@@ -24,6 +30,9 @@
 
 /* No comment provided by engineer. */
 "Code Block" = "Блок кода";
+
+/* No comment provided by engineer. */
+"Code Span" = "Диапазон кода";
 
 /* No comment provided by engineer. */
 "Copy HTML" = "Скопировать HTML";
@@ -37,6 +46,9 @@
 /* No comment provided by engineer. */
 "Correct Spelling Automatically" = "Корректировать правописание";
 
+/* Menu */
+"Creation date:" = "Creation date:";
+
 /* No comment provided by engineer. */
 "Current password does not match with password in keychain" = "Пароль не соответствует паролю в связке";
 
@@ -44,7 +56,22 @@
 "Data Detectors" = "Детекторы данных";
 
 /* No comment provided by engineer. */
+"Default storage path should not be equal to Git path." = "Default storage path should not be equal to Git path.";
+
+/* No comment provided by engineer. */
 "Delete" = "Удаление";
+
+/* No comment provided by engineer. */
+"Delete folder" = "Удалить директорию";
+
+/* No comment provided by engineer. */
+"Detach storage" = "Отключить хранилище";
+
+/* No comment provided by engineer. */
+"Do you want to move current notes in the new destination?" = "Вы хотите переместить текущие заметки в новое место назначения?";
+
+/* No comment provided by engineer. */
+"Edit Link…" = "Edit Link…";
 
 /* No comment provided by engineer. */
 "Empty password" = "Не введен пароль";
@@ -53,16 +80,43 @@
 "Enter Master Password" = "Введите мастер пароль";
 
 /* No comment provided by engineer. */
+"File with name \"\(currentTitle)\" already exists!" = "File with name \"\(currentTitle)\" already exists!";
+
+/* No comment provided by engineer. */
 "FSNotes [edit]" = "FSNotes [редактирование]";
 
 /* No comment provided by engineer. */
 "FSNotes [preview]" = "FSNotes [предпросмотр]";
 
 /* No comment provided by engineer. */
-"Image" = "Изображение";
+"Header 1" = "Header 1";
 
-/* Edit area */
-"Image title" = "Заголовок";
+/* No comment provided by engineer. */
+"Header 2" = "Header 2";
+
+/* No comment provided by engineer. */
+"Header 3" = "Header 3";
+
+/* No comment provided by engineer. */
+"Header 4" = "Header 4";
+
+/* No comment provided by engineer. */
+"Header 5" = "Header 5";
+
+/* No comment provided by engineer. */
+"Header 6" = "Header 6";
+
+/* No comment provided by engineer. */
+"History" = "История";
+
+/* No comment provided by engineer. */
+"Image or file" = "Image or file";
+
+/* No comment provided by engineer. */
+"Inbox" = "Входящие";
+
+/* No comment provided by engineer. */
+"Incorrect file name" = "Incorrect file name";
 
 /* No comment provided by engineer. */
 "Link" = "Ссылка";
@@ -80,7 +134,7 @@
 "New" = "Создать";
 
 /* No comment provided by engineer. */
-"New folder" = "Новая директория";
+"New folder" = "Создать директорию";
 
 /* No comment provided by engineer. */
 "New project" = "Новая директория";
@@ -88,9 +142,23 @@
 /* No comment provided by engineer. */
 "New RTF" = "Создать RTF";
 
-/* Rename
-   Sidebar label */
+/* No comment provided by engineer. */
+"No" = "Нет";
+
+/* Sidebar label */
 "Notes" = "Заметки";
+
+/* No comment provided by engineer. */
+"OK" = "OK";
+
+/* Document opened */
+"Open note" = "Open note";
+
+/* No comment provided by engineer. */
+"Otherwise, the database of your notes will be available at: " = "В противном случае база данных заметок будет доступна по адресу: ";
+
+/* No comment provided by engineer. */
+"Path not available" = "Path not available";
 
 /* Edit area */
 "Please enter image title:" = "Пожалуйста, введите заголовок изображения:";
@@ -117,13 +185,22 @@
 "Remove" = "Удалить";
 
 /* No comment provided by engineer. */
+"Remove Link" = "Remove Link";
+
+/* No comment provided by engineer. */
 "Remove note(s)" = "Удалить";
 
 /* No comment provided by engineer. */
-"Reveal folder" = "Открыть директорию";
+"Rename folder" = "Переименовать директорию";
 
 /* No comment provided by engineer. */
 "Search and create" = "Найти и создать";
+
+/* No comment provided by engineer. */
+"Show in Finder" = "Показать в Finder";
+
+/* No comment provided by engineer. */
+"Show view options" = "Настроить вид";
 
 /* No comment provided by engineer. */
 "Smart Copy/Paste" = "Смарт-копирование/вставка";
@@ -138,13 +215,10 @@
 "Smart Quotes" = "Смарт-кавычки";
 
 /* View menu */
-"Sort By" = "Упорядочить по";
+"Sort by" = "Сортировать по";
 
 /* No comment provided by engineer. */
 "Spelling and Grammar" = "Орфография и грамматика";
-
-/* No comment provided by engineer. */
-"Strikethrough" = "Зачёркнутый";
 
 /* No comment provided by engineer. */
 "Substitutions" = "Замены";
@@ -158,6 +232,9 @@
 
 /* Delete menu */
 "This action cannot be undone." = "Это действие не может быть отменено.";
+
+/* No comment provided by engineer. */
+"Todo" = "Todo";
 
 /* No comment provided by engineer. */
 "Toggle preview" = "Переключить предпросмотр";
@@ -178,5 +255,21 @@
 "View" = "Вид";
 
 /* No comment provided by engineer. */
+"We are detect that you are install FSNotes from Mac App Store with default storage in iCloud Drive, do you want to move old database in iCloud Drive?" = "Мы обнаружили, что вы установили FSNotes из Mac App Store с хранилищем по умолчанию в iCloud Drive. Хотите ли вы перенести старую базу данных в iCloud  Drive?";
+
+/* No comment provided by engineer. */
+"We can not move \"{DST_PATH}\" because this item already exist in selected destination." = "Мы не можем переместить \\\"{DST_PATH}\\\", потому что этот путь уже существует в выбранном месте назначения.";
+
+/* No comment provided by engineer. */
 "Wrong repeated password" = "Несоответствие паролей";
 
+/* No comment provided by engineer. */
+"Yes" = "Да";
+
+"Attach storage" = "";
+
+"Hmm, something goes wrong 🙈" = "";
+
+"Note with name \"%@\" already exists in selected storage." = "";
+
+"Sort By" = "";

@@ -12,7 +12,11 @@ import NightNight
 class ProjectSettingsViewController: UITableViewController {
     private var dismiss: Bool = false
     private var project: Project
-    private var sections = ["Sort by", "Visibility", "Notes list"]
+    private var sections = [
+        NSLocalizedString("Sort by", comment: ""),
+        NSLocalizedString("Visibility", comment: ""),
+        NSLocalizedString("Notes list", comment: "")
+    ]
     private var rowsInSections = [3, 2, 1]
 
     init(project: Project, dismiss: Bool = false) {
@@ -27,7 +31,7 @@ class ProjectSettingsViewController: UITableViewController {
     }
 
     override func viewDidLoad() {
-        view.mixedBackgroundColor = MixedColor(normal: 0xfafafa, night: 0x2e2c32)
+        view.mixedBackgroundColor = MixedColor(normal: 0xfafafa, night: 0x000000)
 
         navigationController?.navigationBar.mixedTitleTextAttributes = [NNForegroundColorAttributeName: Colors.titleText]
         navigationController?.navigationBar.mixedBarTintColor = Colors.Header
@@ -38,16 +42,15 @@ class ProjectSettingsViewController: UITableViewController {
             self.navigationItem.leftBarButtonItem = Buttons.getBack(target: self, selector: #selector(cancel))
         }
 
-        self.title = "Project \"\(project.getFullLabel())\""
+        self.title = NSLocalizedString("Project", comment: "Settings") + " \"\(project.getFullLabel())\""
 
         super.viewDidLoad()
     }
 
     override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+        let vc = UIApplication.getVC()
 
         if let cell = tableView.cellForRow(at: indexPath) {
-            let vc = UIApplication.getVC()
-
             if indexPath.section == 0x00 {
                 for row in 0...rowsInSections[indexPath.section] {
                     let cell = tableView.cellForRow(at: IndexPath(row: row, section: indexPath.section))
@@ -56,40 +59,18 @@ class ProjectSettingsViewController: UITableViewController {
 
                 if let sort = SortBy(rawValue: cell.reuseIdentifier!) {
                     self.project.sortBy = sort
-                    
-                    vc.updateTable {}
+                    vc.reloadNotesTable()
                 }
-            } else if indexPath.section == 0x01 {
-                if indexPath.row == 0x00 {
-                    self.project.showInCommon = cell.accessoryType == .none
 
-                    vc.updateTable {}
+                if cell.accessoryType == .none {
+                    cell.accessoryType = .checkmark
                 } else {
-                    self.project.showInSidebar = cell.accessoryType == .none
-
-                    vc.sidebarTableView.reloadData()
-                    vc.reloadSidebar()
+                    cell.accessoryType = .none
                 }
-            } else {
-                self.project.firstLineAsTitle = cell.accessoryType == .none
-
-                let notes = Storage.sharedInstance().getNotesBy(project: self.project)
-
-                for note in notes {
-                    note.invalidateCache()
-                }
-
-                vc.updateTable {}
-            }
-
-            if cell.accessoryType == .none {
-                cell.accessoryType = .checkmark
-            } else {
-                cell.accessoryType = .none
             }
         }
 
-        self.project.saveSettings()
+        project.saveSettings()
     }
 
     override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
@@ -105,30 +86,32 @@ class ProjectSettingsViewController: UITableViewController {
     }
 
     override func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
-        return self.sections[section]
+        return sections[section]
     }
 
     override func tableView(_ tableView: UITableView, willDisplay cell: UITableViewCell, forRowAt indexPath: IndexPath) {
-        cell.mixedBackgroundColor = MixedColor(normal: 0xffffff, night: 0x2e2c32)
+        cell.mixedBackgroundColor = MixedColor(normal: 0xffffff, night: 0x000000)
         cell.textLabel?.mixedTextColor = MixedColor(normal: 0x000000, night: 0xffffff)
     }
 
     override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+        let uiSwitch = UISwitch()
+        uiSwitch.addTarget(self, action: #selector(switchValueDidChange(_:)), for: .valueChanged)
+        
         var cell = UITableViewCell()
-        let vc = UIApplication.getVC()
 
         if indexPath.section == 0x00 {
             switch indexPath.row {
             case 0:
                 cell = UITableViewCell(style: .default, reuseIdentifier: "modificationDate")
-                cell.textLabel?.text = "Modification date"
+                cell.textLabel?.text = NSLocalizedString("Modification date", comment: "")
                 if project.sortBy.rawValue == "modificationDate" {
                     cell.accessoryType = .checkmark
                 }
                 break
             case 1:
                 cell = UITableViewCell(style: .default, reuseIdentifier: "creationDate")
-                cell.textLabel?.text = "Creation date"
+                cell.textLabel?.text = NSLocalizedString("Creation date", comment: "")
 
                 if project.sortBy.rawValue == "creationDate" {
                     cell.accessoryType = .checkmark
@@ -136,7 +119,7 @@ class ProjectSettingsViewController: UITableViewController {
                 break
             case 2:
                 cell = UITableViewCell(style: .default, reuseIdentifier: "title")
-                cell.textLabel?.text = "Title"
+                cell.textLabel?.text = NSLocalizedString("Title", comment: "")
 
                 if project.sortBy.rawValue == "title" {
                     cell.accessoryType = .checkmark
@@ -154,37 +137,88 @@ class ProjectSettingsViewController: UITableViewController {
         if indexPath.section == 0x01 {
             switch indexPath.row {
             case 0:
-                cell.textLabel?.text = "Show notes in \"Notes\" and \"Todo\" lists"
-                cell.accessoryType = project.showInCommon ? .checkmark : .none
+                cell.accessoryView = uiSwitch
+                uiSwitch.isOn = project.showInCommon
+                uiSwitch.isEnabled =
+                    !project.isDefault
+                    && !project.isArchive
+                    && !project.isTrash
+                    && !project.isVirtual
+
+                cell.textLabel?.text = NSLocalizedString("Show notes in \"Notes\" and \"Todo\" lists", comment: "")
             case 1:
-                cell.textLabel?.text = "Show folder in sidebar"
-                cell.accessoryType = project.showInSidebar ? .checkmark : .none
+                cell.accessoryView = uiSwitch
+                uiSwitch.isOn = project.showInSidebar
+                uiSwitch.isEnabled =
+                    !project.isDefault
+                    && !project.isArchive
+                    && !project.isTrash
+                    && !project.isVirtual
+
+                cell.textLabel?.text = NSLocalizedString("Show folder in sidebar", comment: "")
             default:
                 return cell
             }
         }
 
         if indexPath.section == 0x02 {
-            cell.textLabel?.text = "Use first line as title"
-            cell.accessoryType = project.firstLineAsTitle ? .checkmark : .none
+            cell.accessoryView = uiSwitch
+            uiSwitch.isOn = project.firstLineAsTitle
+            uiSwitch.isEnabled = !project.isVirtual
+
+            cell.textLabel?.text = NSLocalizedString("Use first line as title", comment: "")
         }
 
         return cell
     }
 
+    @objc public func switchValueDidChange(_ sender: UISwitch) {
+        guard let cell = sender.superview as? UITableViewCell,
+            let tableView = cell.superview as? UITableView,
+            let indexPath = tableView.indexPath(for: cell) else { return }
+
+        let vc = UIApplication.getVC()
+
+        if indexPath.section == 0x01 {
+            if indexPath.row == 0x00 {
+                guard let uiSwitch = cell.accessoryView as? UISwitch else { return }
+                self.project.showInCommon = uiSwitch.isOn
+
+                vc.reloadNotesTable()
+            } else {
+                guard let uiSwitch = cell.accessoryView as? UISwitch else { return }
+
+                project.showInSidebar = uiSwitch.isOn
+
+                if !uiSwitch.isOn {
+                    let at = IndexPath(row: 0, section: 0)
+                    vc.sidebarTableView.tableView(vc.sidebarTableView, didSelectRowAt: at)
+                    vc.sidebarTableView.removeRows(projects: [project])
+                } else {
+                    vc.sidebarTableView.insertRows(projects: [project])
+                }
+            }
+        } else if indexPath.section == 0x02 {
+            guard let uiSwitch = cell.accessoryView as? UISwitch else { return }
+            project.firstLineAsTitle = uiSwitch.isOn
+
+            let notes = Storage.sharedInstance().getNotesBy(project: project)
+            for note in notes {
+                note.invalidateCache()
+            }
+
+            vc.reloadNotesTable()
+        }
+
+        project.saveSettings()
+    }
+
     @objc func cancel() {
-        self.navigationController?.popViewController(animated: true)
+        navigationController?.popViewController(animated: true)
     }
 
     @objc func close() {
-        guard let pageController = UIApplication.shared.windows[0].rootViewController as? PageViewController, let vc = pageController.mainViewController
-            else { return }
-
-        vc.sidebarTableView.sidebar = Sidebar()
-        vc.sidebarTableView.reloadData()
-        vc.notesTable.reloadData()
-
-        self.dismiss(animated: true, completion: nil)
+        dismiss(animated: true, completion: nil)
     }
 }
 

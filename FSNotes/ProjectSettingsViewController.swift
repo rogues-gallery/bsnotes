@@ -16,20 +16,39 @@ class ProjectSettingsViewController: NSViewController {
     @IBOutlet weak var modificationDate: NSButton!
     @IBOutlet weak var creationDate: NSButton!
     @IBOutlet weak var titleButton: NSButton!
+    @IBOutlet weak var sortByGlobal: NSButton!
+
+    @IBOutlet weak var directionASC: NSButton!
+    @IBOutlet weak var directionDESC: NSButton!
 
     @IBOutlet weak var showInAll: NSButton!
     @IBOutlet weak var firstLineAsTitle: NSButton!
 
     @IBAction func sortBy(_ sender: NSButton) {
-        project?.sortBy = SortBy(rawValue: sender.identifier!.rawValue)!
-        project?.saveSettings()
+        guard let project = project else { return }
 
-        guard let vc = ViewController.shared() else {
-            return
+        let sortBy = SortBy(rawValue: sender.identifier!.rawValue)!
+        if sortBy != .none {
+            project.sortBy = sortBy
         }
 
+        project.sortBy = sortBy
+        project.saveSettings()
+
+        guard let vc = ViewController.shared() else { return }
         vc.updateTable()
     }
+
+    @IBAction func sortDirection(_ sender: NSButton) {
+        guard let project = project else { return }
+
+        project.sortDirection = SortDirection(rawValue: sender.identifier!.rawValue)!
+        project.saveSettings()
+
+        guard let vc = ViewController.shared() else { return }
+        vc.updateTable()
+    }
+
 
     @IBAction func showNotesInMainList(_ sender: NSButton) {
         project?.showInCommon = sender.state == .on
@@ -37,8 +56,18 @@ class ProjectSettingsViewController: NSViewController {
     }
 
     @IBAction func firstLineAsTitle(_ sender: NSButton) {
-        project?.firstLineAsTitle = sender.state == .on
-        project?.saveSettings()
+        guard let project = self.project else { return }
+
+        project.firstLineAsTitle = sender.state == .on
+        project.saveSettings()
+
+        let notes = Storage.sharedInstance().getNotesBy(project: project)
+        for note in notes {
+            note.invalidateCache()
+        }
+
+        guard let vc = ViewController.shared() else { return }
+        vc.notesTableView.reloadData()
     }
 
     @IBAction func close(_ sender: Any) {
@@ -58,6 +87,10 @@ class ProjectSettingsViewController: NSViewController {
         modificationDate.state = project.sortBy == .modificationDate ? .on : .off
         creationDate.state = project.sortBy == .creationDate ? .on : .off
         titleButton.state = project.sortBy == .title ? .on : .off
+        sortByGlobal.state = project.sortBy == .none ? .on : .off
+
+        directionASC.state = project.sortDirection == .asc ? .on : .off
+        directionDESC.state = project.sortDirection == .desc ? .on : .off
 
         self.project = project
     }

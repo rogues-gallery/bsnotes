@@ -1,0 +1,287 @@
+/* Archive in sidebar */
+"Archive" = "Архів";
+
+/* No comment provided by engineer. */
+"Auto by screen brightness" = "Автоматично за яскравістю екрана";
+
+/* Naming controller */
+"Auto rename by title" = "Автоматичне за заголовком";
+
+/* Settings */
+"Autocorrection" = "Автокорекція";
+
+/* No comment provided by engineer. */
+"Brightness level" = "Рівень яскравості";
+
+/* Settings */
+"build" = "білд";
+
+/* No comment provided by engineer. */
+"Cancel" = "Скасувати";
+
+/* Settings */
+"Code block live highlighting" = "Живе підсвічування блоку коду";
+
+/* No comment provided by engineer. */
+"Compatible with DayOne JSON (zip), Bear and Ulysses (textbundle), markdown, txt, rtf." = "Сумісний з DayOne JSON (zip), Bear and Ulysses (textbundle), markdown, txt, rtf.";
+
+/* Settings */
+"Container" = "Контейнер";
+
+/* No comment provided by engineer. */
+"Copy plain text" = "Скопіювати звичайний текст";
+
+/* Main view popover table */
+"Create folder" = "Створити папку";
+
+/* No comment provided by engineer. */
+"Create folder:" = "Створити папку:";
+
+/* No comment provided by engineer. */
+"Creation date" = "Датою створення";
+
+/* Settings */
+"Default Container" = "Контейнер за замовчуванням";
+
+/* Settings */
+"Default Extension" = "Розширення за замовчуванням";
+
+/* Settings */
+"Default Keyboard In Editor" = "Клавіатура за замовчуванням";
+
+/* Table row action */
+"Delete" = "Видалити";
+
+/* No comment provided by engineer. */
+"Disabled" = "Відключений";
+
+/* No comment provided by engineer. */
+"Documents" = "Документи";
+
+/* No comment provided by engineer. */
+"Done" = "Гаразд";
+
+/* Settings */
+"Dynamic Type" = "Динамічний шрифт";
+
+/* Settings */
+"Editor" = "Редактор";
+
+/* No comment provided by engineer. */
+"Enabled" = "Включений";
+
+/* No comment provided by engineer. */
+"Enter folder name" = "Введіть назву папки";
+
+/* No comment provided by engineer. */
+"Enter Master Password" = "Введіть пароль";
+
+/* No comment provided by engineer. */
+"Enter new tag name" = "Введіть назву тега";
+
+/* No comment provided by engineer. */
+"Enter note name" = "Введіть назву нотатки";
+
+/* Settings */
+"Extension" = "Формат файла";
+
+/* No comment provided by engineer. */
+"File with this name already exist" = "Файл з цим іменем вже існує";
+
+/* Settings */
+"Files Naming" = "Іменування файлів";
+
+/* No comment provided by engineer. */
+"Focus in search field" = "Зосередитись в полі";
+
+/* No comment provided by engineer. */
+"Folder name:" = "Назва папки:";
+
+/* No comment provided by engineer. */
+"Folder with this name already exist" = "Папка з цим іменем вже існує";
+
+/* Settings */
+"Font" = "Шрифт";
+
+/* Settings */
+"Font Family" = "Сімейство шрифтів";
+
+/* Settings */
+"Font size" = "Розмір шрифту";
+
+/* Settings */
+"General" = "Загальні";
+
+/* Settings */
+"Homepage" = "Домашня сторінка";
+
+/* No comment provided by engineer. */
+"Images source:" = "Джерело зображень:";
+
+/* Main view popover table - Settings */
+"Import notes" = "Імпортувати";
+
+/* Inbox in sidebar */
+"Inbox" = "Вхідні";
+
+/* No comment provided by engineer. */
+"Invalid Password" = "Недійсний пароль";
+
+/* Settings */
+"Live images preview" = "Живий перегляд зображень";
+
+/* No comment provided by engineer. */
+"Lock" = "Заблокувати";
+
+/* No comment provided by engineer. */
+"Lock/unlock" = "Заблокувати/розблокувати";
+
+/* No comment provided by engineer. */
+"Modification date" = "Датою модифікації";
+
+/* Table row action */
+"More" = "Ще";
+
+/* Move view */
+"Move" = "Перемістити";
+
+/* No comment provided by engineer. */
+"New document" = "Нова нотатка";
+
+/* Settings */
+"Night Mode" = "Нічний режим";
+
+/* Notes in sidebar - Sidebar items */
+"Notes" = "Нотатки";
+
+/* No comment provided by engineer. */
+"Notes list" = "Лист нотаток";
+
+/* Document opened */
+"Open note" = "Відкрита нотатка";
+
+/* No comment provided by engineer. */
+"Photos" = "Фотографії";
+
+/* Table row action */
+"Pin" = "Закріпити";
+
+/* No comment provided by engineer. */
+"Please enter valid password" = "Введіть дійсний пароль";
+
+/* No comment provided by engineer. */
+"Preview" = "Попередній перегляд";
+
+/* Settings */
+"Project" = "Проект";
+
+/* No comment provided by engineer. */
+"Project removing ❌" = "Видалення проекту ❌";
+
+/* Settings */
+"Projects" = "Проекти";
+
+/* Settings */
+"Rate FSNotes" = "Оцінити FSNotes";
+
+/* No comment provided by engineer. */
+"Remove encryption" = "Зняти шифрування";
+
+/* Main view popover table */
+"Remove folder" = "Видалити папку";
+
+/* Main view popover table */
+"Remove tag" = "Видалити тег";
+
+/* No comment provided by engineer. */
+"Rename" = "Перейменувати";
+
+/* Main view popover table */
+"Rename folder" = "Перейменувати папку";
+
+/* Popover table */
+"Rename folder:" = "Перейменувати папку:";
+
+/* No comment provided by engineer. */
+"Rename note:" = "Перейменувати нотатку:";
+
+/* Main view popover table */
+"Rename tag" = "Перейменувати тег";
+
+/* Popover table */
+"Rename tag:" = "Перейменувати тег:";
+
+/* No comment provided by engineer. */
+"Save clipboard" = "Зберегти буфер обміну";
+
+/* No comment provided by engineer. */
+"Search" = "Пошук";
+
+/* No comment provided by engineer. */
+"Search or create" = "Знайти або створити";
+
+/* Sidebar settings */
+"Settings" = "Налаштування";
+
+/* No comment provided by engineer. */
+"Share" = "Поділитися";
+
+/* No comment provided by engineer. */
+"Show folder in sidebar" = "Показати папку на бічній панелі";
+
+/* No comment provided by engineer. */
+"Show notes in \"Notes\" and \"Todo\" lists" = "Включити у \"Нотатки/завдання\"";
+
+/* No comment provided by engineer. */
+"Sort by" = "Сортувати за";
+
+/* Settings */
+"Spell Checking" = "Перевірка правопису";
+
+/* Settings */
+"Storage" = "Сховище";
+
+/* Settings */
+"Support" = "Підтримка";
+
+/* No comment provided by engineer. */
+"System" = "Система";
+
+/* No comment provided by engineer. */
+"Title" = "Заголовком";
+
+/* Sidebar items - Todo in sidebar */
+"Todo" = "Завдання";
+
+/* Sidebar label - Trash in sidebar */
+"Trash" = "Сміття";
+
+/* Settings */
+"Twitter" = "Twitter";
+
+/* No comment provided by engineer. */
+"Type" = "Тип";
+
+/* Settings */
+"UI" = "Інтерфейс";
+
+/* No comment provided by engineer. */
+"Unlock" = "Розблокувати";
+
+/* Table row action */
+"UnPin" = "Відкріпити";
+
+/* No comment provided by engineer. */
+"Use first line as title" = "Перший рядок як заголовок";
+
+/* Settings */
+"Use inline tags" = "Використовувати вбудовані теги";
+
+/* Settings */
+"Version" = "Версія";
+
+/* Main view popover table */
+"View settings" = "Налаштування";
+
+/* No comment provided by engineer. */
+"Visibility" = "Видимість";

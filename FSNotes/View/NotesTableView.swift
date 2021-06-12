@@ -20,8 +20,22 @@ class NotesTableView: NSTableView, NSTableViewDataSource,
 
     public var loadingQueue = OperationQueue.init()
     public var fillTimestamp: Int64?
-    
+
+    public var history = [URL]()
+    public var historyPosition = 0
+
+    public var limitedActionsList = [
+        "note.print",
+        "note.copyTitle",
+        "note.copyURL",
+        "note.rename",
+        "note.saveRevision",
+        "note.history"
+    ]
+
     override func draw(_ dirtyRect: NSRect) {
+        allowsTypeSelect = false
+        self.gridColor = NSColor.clear
         self.dataSource = self
         self.delegate = self
         super.draw(dirtyRect)
@@ -33,8 +47,16 @@ class NotesTableView: NSTableView, NSTableViewDataSource,
             return
         }
         
-        if (event.keyCode == kVK_Tab && !event.modifierFlags.contains(.control)), !UserDefaultsManagement.preview {
-            vc.focusEditArea()
+        if EditTextView.note != nil,
+           event.keyCode == kVK_Tab && !event.modifierFlags.contains(.control)
+        {
+            if vc.currentPreviewState == .on {
+                NSApp.mainWindow?.makeFirstResponder(vc.editArea.markdownView)
+            } else {
+                vc.focusEditArea()
+            }
+
+            return
         }
         
         if (event.keyCode == kVK_LeftArrow) {
@@ -42,11 +64,15 @@ class NotesTableView: NSTableView, NSTableViewDataSource,
                 super.keyUp(with: event)
                 return
             }
-            
-            vc.storageOutlineView.window?.makeFirstResponder(vc.storageOutlineView)
-            vc.storageOutlineView.selectRowIndexes([1], byExtendingSelection: false)
+
+            vc.sidebarOutlineView.window?.makeFirstResponder(vc.sidebarOutlineView)
+            if vc.sidebarOutlineView.selectedRowIndexes.count == 0 {
+                vc.sidebarOutlineView.selectRowIndexes([0], byExtendingSelection: false)
+            }
+
+            return
         }
-        
+
         super.keyUp(with: event)
     }
     
@@ -57,7 +83,16 @@ class NotesTableView: NSTableView, NSTableViewDataSource,
     override func mouseDown(with event: NSEvent) {
         UserDataService.instance.searchTrigger = false
 
+        ViewController.shared()?.restoreCurrentPreviewState()
+
         super.mouseDown(with: event)
+    }
+
+    func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool {
+        if (noteList.indices.contains(row)) {
+            saveNavigationHistory(note: noteList[row])
+        }
+        return true
     }
 
     override func rightMouseDown(with event: NSEvent) {
@@ -66,15 +101,16 @@ class NotesTableView: NSTableView, NSTableViewDataSource,
         let point = self.convert(event.locationInWindow, from: nil)
         let i = row(at: point)
         
-        if self.noteList.indices.contains(i) {
-            DispatchQueue.main.async {
-                var selectedRows = self.selectedRowIndexes
-                if !selectedRows.contains(i) {
-                    selectedRows.insert(i)
-                }
+        if noteList.indices.contains(i) {
+            saveNavigationHistory(note: noteList[i])
 
-                self.selectRowIndexes(selectedRows, byExtendingSelection: false)
-                self.scrollRowToVisible(i)
+            DispatchQueue.main.async {
+                let selectedRows = self.selectedRowIndexes
+                if !selectedRows.contains(i) {
+                    self.selectRowIndexes(IndexSet(integer: i), byExtendingSelection: false)
+                    self.scrollRowToVisible(i)
+                    return
+                }
             }
 
             super.rightMouseDown(with: event)
@@ -95,10 +131,11 @@ class NotesTableView: NSTableView, NSTableViewDataSource,
         let height = CGFloat(21 + UserDefaultsManagement.cellSpacing)
 
         if !UserDefaultsManagement.horizontalOrientation && !UserDefaultsManagement.hidePreviewImages {
-            if noteList.indices.contains(row) {
+            if row < noteList.count {
                 let note = noteList[row]
+                note.loadPreviewInfo()
 
-                if let urls = note.getImagePreviewUrl(), urls.count > 0 {
+                if let urls = note.imageUrl, urls.count > 0 {
                     let previewCharsQty = note.preview.count
 
                     if (previewCharsQty == 0) {
@@ -135,25 +172,26 @@ class NotesTableView: NSTableView, NSTableViewDataSource,
         }
 
         if UserDataService.instance.isNotesTableEscape {
-            if vc.storageOutlineView.selectedRow == -1 {
+            if vc.sidebarOutlineView.selectedRow == -1 {
                 UserDataService.instance.isNotesTableEscape = false
             }
             
-            vc.storageOutlineView.deselectAll(nil)
+            vc.sidebarOutlineView.deselectAll(nil)
+            vc.sidebarOutlineView.reloadTags()
             vc.editArea.clear()
             return
         }
         
         if (noteList.indices.contains(selectedRow)) {
             let note = noteList[selectedRow]
-            
-            if let items = vc.storageOutlineView.sidebarItems {
+
+            if !UserDefaultsManagement.inlineTags, let items = vc.sidebarOutlineView.sidebarItems {
                 for item in items {
-                    if item.type == .Tag {
-                        if note.tagNames.contains(item.name) {
-                            vc.storageOutlineView.selectTag(item: item)
+                    if let tag = item as? Tag {
+                        if note.tagNames.contains(tag.getName()) {
+                            vc.sidebarOutlineView.selectTag(item: tag)
                         } else {
-                            vc.storageOutlineView.deselectTag(item: item)
+                            vc.sidebarOutlineView.deselectTag(item: tag)
                         }
                     }
                 }
@@ -161,15 +199,20 @@ class NotesTableView: NSTableView, NSTableViewDataSource,
 
             self.loadingQueue.cancelAllOperations()
             let operation = BlockOperation()
-            operation.addExecutionBlock {
-                note.markdownCache()
-        
+            operation.addExecutionBlock { [weak self] in        
                 DispatchQueue.main.async {
-                    guard !operation.isCancelled, self.fillTimestamp == timestamp else { return }
+                    guard self?.selectedRowIndexes.count == 0x01 else {
+                        vc.editArea.clear()
+                        return
+                    }
+
+                    guard !operation.isCancelled,
+                          self?.fillTimestamp == timestamp else { return }
 
                     vc.editArea.fill(note: note, highlight: true)
+
                     if UserDefaultsManagement.focusInEditorOnNoteSelect && !UserDataService.instance.searchTrigger {
-                        vc.focusEditArea(firstResponder: nil)
+                        vc.focusEditArea()
                     }
                 }
             }
@@ -177,7 +220,10 @@ class NotesTableView: NSTableView, NSTableViewDataSource,
 
         } else {
             vc.editArea.clear()
-            vc.storageOutlineView.deselectAllTags()
+
+            if !UserDefaultsManagement.inlineTags {
+                vc.sidebarOutlineView.deselectAllTags()
+            }
         }
     }
     
@@ -189,11 +235,27 @@ class NotesTableView: NSTableView, NSTableViewDataSource,
     }
     
     func tableView(_ tableView: NSTableView, writeRowsWith rowIndexes: IndexSet, to pboard: NSPasteboard) -> Bool {
-        let data = NSKeyedArchiver.archivedData(withRootObject: rowIndexes)
-        let type = NSPasteboard.PasteboardType.init(rawValue: "notesTable")
-        pboard.declareTypes([type], owner: self)
-        pboard.setData(data, forType: type)
+        var title = String()
+        var urls = [URL]()
+        for row in rowIndexes {
+            let note = noteList[row]
+            urls.append(note.url)
+
+            title = note.title
+        }
+
+        pboard.setString(title, forType: NSPasteboard.PasteboardType.string)
+
+        let data = NSKeyedArchiver.archivedData(withRootObject: urls)
+        pboard.setData(data, forType: NSPasteboard.noteType)
+
         return true
+    }
+
+    @IBAction func copy(_ sender: Any) {
+        guard let vc = ViewController.shared() else { return }
+
+        vc.saveTextAtClipboard()
     }
     
     func getNoteFromSelectedRow() -> Note? {
@@ -241,19 +303,23 @@ class NotesTableView: NSTableView, NSTableViewDataSource,
     }
     
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        if ([kVK_ANSI_8, kVK_ANSI_J, kVK_ANSI_K].contains(Int(event.keyCode)) && event.modifierFlags.contains(.command)) {
+        if let char = event.characters?.unicodeScalars.first,
+           ["j", "k"].contains(char) && event.modifierFlags.contains(.command)
+        {
             return true
         }
-        
-        if event.modifierFlags.contains(.control) && event.modifierFlags.contains(.shift) && event.keyCode == kVK_ANSI_B {
+
+        if self.window?.firstResponder == self,
+           !event.modifierFlags.contains(.shift),
+           event.keyCode == kVK_DownArrow || event.keyCode == kVK_UpArrow {
+            ViewController.shared()?.restoreCurrentPreviewState()
+        }
+
+        if event.keyCode == kVK_LeftArrow, let fr = self.window?.firstResponder, fr.isKind(of: NotesTableView.self) {
             return true
         }
-        
+
         if event.modifierFlags.contains(.control) && event.keyCode == kVK_Tab {
-            return true
-        }
-                
-        if (event.keyCode == kVK_ANSI_M && event.modifierFlags.contains(.command) && event.modifierFlags.contains(.shift)) {
             return true
         }
         
@@ -292,11 +358,28 @@ class NotesTableView: NSTableView, NSTableViewDataSource,
             selectRowIndexes([clickedRow], byExtendingSelection: false)
         }
 
-        if selectedRow < 1 {
+        if selectedRow < 0 {
             return
         }
 
         guard let vc = self.window?.contentViewController as? ViewController else { return }
+
+        menu.autoenablesItems = false
+
+        for menuItem in menu.items {
+            if let identifier = menuItem.identifier?.rawValue,
+                limitedActionsList.contains(identifier)
+            {
+                menuItem.isEnabled = (vc.notesTableView.selectedRowIndexes.count == 1)
+            }
+
+            if menuItem.identifier?.rawValue == "fileMenu.removeEncryption" {
+                if let note = EditTextView.note {
+                    menuItem.isEnabled = note.isEncrypted()
+                }
+            }
+        }
+
         vc.loadMoveMenu()
     }
     
@@ -307,24 +390,50 @@ class NotesTableView: NSTableView, NSTableViewDataSource,
         return nil
     }
     
-    func selectNext() {
+    public func selectNext() {
+        guard let vc = ViewController.shared() else { return }
+        vc.restoreCurrentPreviewState()
+
         UserDataService.instance.searchTrigger = false
+
+        let i = selectedRow + 1
+        if (noteList.indices.contains(i)) {
+            saveNavigationHistory(note: noteList[i])
+        }
 
         selectRow(selectedRow + 1)
     }
     
-    func selectPrev() {
+    public func selectPrev() {
+        guard let vc = ViewController.shared() else { return }
+        vc.restoreCurrentPreviewState()
+
         UserDataService.instance.searchTrigger = false
-        
+
+        let i = selectedRow - 1
+        if (noteList.indices.contains(i)) {
+            saveNavigationHistory(note: noteList[i])
+        }
+
         selectRow(selectedRow - 1)
     }
     
-    func selectRow(_ i: Int) {
+    public func selectRow(_ i: Int) {
         if (noteList.indices.contains(i)) {
             DispatchQueue.main.async {
                 self.selectRowIndexes([i], byExtendingSelection: false)
                 self.scrollRowToVisible(i)
             }
+        }
+    }
+
+    public func selectRowAndSidebarItem(note: Note) {
+        guard let vc = ViewController.shared() else { return }
+
+        if let index = getIndex(note) {
+            selectRow(index)
+        } else {
+            vc.sidebarOutlineView.select(note: note)
         }
     }
 
@@ -336,12 +445,20 @@ class NotesTableView: NSTableView, NSTableViewDataSource,
     }
     
     func removeByNotes(notes: [Note]) {
+        guard let vc = ViewController.shared() else { return }
+
+        beginUpdates()
         for note in notes {
             if let i = noteList.firstIndex(where: {$0 === note}) {
                 let indexSet = IndexSet(integer: i)
                 noteList.remove(at: i)
                 removeRows(at: indexSet, withAnimation: .slideDown)
             }
+        }
+        endUpdates()
+
+        if UserDefaultsManagement.inlineTags {
+            vc.sidebarOutlineView.removeTags(notes: notes)
         }
     }
     
@@ -350,6 +467,10 @@ class NotesTableView: NSTableView, NSTableViewDataSource,
             do {
                 if let note = storage.getBy(url: src) {
                     storage.removeBy(note: note)
+
+                    if let destination = Storage.sharedInstance().getProjectByNote(url: dst) {
+                        note.moveImages(to: destination)
+                    }
                 }
 
                 try FileManager.default.moveItem(at: src, to: dst)
@@ -368,30 +489,37 @@ class NotesTableView: NSTableView, NSTableViewDataSource,
         }
         return i
     }
-    
+
     public func insertNew(note: Note) {
         guard let vc = self.window?.contentViewController as? ViewController else { return }
 
-        guard vc.isFit(note: note, shouldLoadMain: true) else { return }
+        guard noteList.first(where: { $0.isEqualURL(url: note.url) }) == nil else { return }
+
+        let type = vc.getSidebarType() ?? .Inbox
+        guard vc.isFit(note: note, shouldLoadMain: true, type: type) else { return }
 
         let at = self.countVisiblePinned()
         self.noteList.insert(note, at: at)
-        vc.filteredNoteList?.insert(note, at: at)
         
         self.beginUpdates()
         self.insertRows(at: IndexSet(integer: at), withAnimation: .effectFade)
         self.reloadData(forRowIndexes: IndexSet(integer: at), columnIndexes: [0])
         self.endUpdates()
+
+        vc.sidebarOutlineView.insertTags(note: note)
     }
 
     public func reloadRow(note: Note) {
+        note.invalidateCache()
+        note.loadPreviewInfo()
+        let urls = note.imageUrl
+
         DispatchQueue.main.async {
             if let i = self.noteList.firstIndex(of: note) {
-                note.invalidateCache()
                 if let row = self.rowView(atRow: i, makeIfNecessary: false) as? NoteRowView, let cell = row.subviews.first as? NoteCellView {
 
                     cell.date.stringValue = note.getDateForLabel()
-                    cell.loadImagesPreview(position: i)
+                    cell.loadImagesPreview(position: i, urls: urls)
                     cell.attachHeaders(note: note)
                     cell.renderPin()
 
@@ -400,5 +528,14 @@ class NotesTableView: NSTableView, NSTableViewDataSource,
             }
         }
     }
-    
+
+    public func saveNavigationHistory(note: Note) {
+        guard history.last != note.url else {
+            historyPosition = history.count - 1
+            return
+        }
+
+        history.append(note.url)
+        historyPosition = history.count - 1
+    }
 }

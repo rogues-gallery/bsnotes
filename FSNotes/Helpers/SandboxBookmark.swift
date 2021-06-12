@@ -30,10 +30,10 @@ class SandboxBookmark {
     
     func load() -> [URL] {
         let path = bookmarkPath()
-        
+
         if FileManager.default.fileExists(atPath: path), let bookmarks = NSKeyedUnarchiver.unarchiveObject(withFile: path) as? [URL: Data] {
             self.bookmarks = bookmarks
-            
+
             for bookmark in bookmarks {
                 _ = restore(bookmark)
             }
@@ -53,6 +53,7 @@ class SandboxBookmark {
             let data = try url.bookmarkData(options: NSURL.BookmarkCreationOptions.withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil)
             bookmarks[url] = data
         } catch {
+            Swift.print(error)
             Swift.print("Error storing bookmarks")
         }
         #endif
@@ -66,14 +67,17 @@ class SandboxBookmark {
         do {
             restoredUrl = try URL.init(resolvingBookmarkData: bookmark.value, options: NSURL.BookmarkResolutionOptions.withSecurityScope, relativeTo: nil, bookmarkDataIsStale: &isStale)
         } catch {
-            Swift.print("Error restoring bookmarks")
+            Swift.print("Error restoring bookmarks: \(error)")
             restoredUrl = nil
+            
+            remove(url: bookmark.key)
+            save()
         }
 
         guard let url = restoredUrl else { return false }
 
         if isStale {
-            Swift.print("URL is stale")
+            Swift.print("URL is stale: \(url)")
             return false
         }
 

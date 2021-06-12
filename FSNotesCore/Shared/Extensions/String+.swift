@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import CommonCrypto
 
 public extension String {
     func condenseWhitespace() -> String {
@@ -55,8 +56,81 @@ public extension String {
         return self
     }
 
+    func isValidEmail() -> Bool {
+        let pattern = "^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$"
+
+        if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) {
+            return regex.firstMatch(in: self, options: [], range: NSRange(location: 0, length: count)) != nil
+        }
+
+        return false
+    }
+
     var isValidUUID: Bool {
         return UUID(uuidString: self) != nil
+    }
+
+    var md5: String {
+        let data = Data(self.utf8)
+        let hash = data.withUnsafeBytes { (bytes: UnsafeRawBufferPointer) -> [UInt8] in
+            var hash = [UInt8](repeating: 0, count: Int(CC_MD5_DIGEST_LENGTH))
+            CC_MD5(bytes.baseAddress, CC_LONG(data.count), &hash)
+            return hash
+        }
+        return hash.map { String(format: "%02x", $0) }.joined()
+    }
+
+    var isWhitespace: Bool {
+        guard !isEmpty else { return true }
+
+        let whitespaceChars = NSCharacterSet.whitespacesAndNewlines
+
+        return self.unicodeScalars
+            .filter { (unicodeScalar: UnicodeScalar) -> Bool in !whitespaceChars.contains(unicodeScalar) }
+            .count == 0
+    }
+
+    var isNumber: Bool {
+        return !isEmpty && rangeOfCharacter(from: CharacterSet.decimalDigits.inverted) == nil
+    }
+
+    var isContainsLetters: Bool {
+        let letters = CharacterSet.letters
+        return self.rangeOfCharacter(from: letters) != nil
+    }
+
+    var withoutSpecialCharacters: String {
+        return self.components(separatedBy: CharacterSet.alphanumerics.inverted).joined(separator: " ")
+                .condenseWhitespace()
+    }
+
+    func escapePlus() -> String {
+        return self.replacingOccurrences(of: "+", with: "%20")
+    }
+
+    func matchingStrings(regex: String) -> [[String]] {
+        guard let regex = try? NSRegularExpression(pattern: regex, options: [.dotMatchesLineSeparators]) else { return [] }
+
+        let nsString = self as NSString
+        let results  = regex.matches(in: self, options: [], range: NSRange(0..<nsString.length))
+        return results.map { result in
+            (0..<result.numberOfRanges).map {
+                result.range(at: $0).location != NSNotFound
+                    ? nsString.substring(with: result.range(at: $0))
+                    : ""
+            }
+        }
+    }
+
+    func trunc(length: Int) -> String {
+        return (self.count > length) ? String(self.prefix(length)) : self
+    }
+
+    func startsWith(string: String) -> Bool {
+        guard let range = range(of: string, options: [.caseInsensitive, .diacriticInsensitive]) else {
+            return false
+        }
+        return range.lowerBound == startIndex
     }
 }
 
@@ -64,4 +138,44 @@ extension StringProtocol where Index == String.Index {
     public func nsRange(from range: Range<Index>) -> NSRange {
         return NSRange(range, in: self)
     }
+}
+
+public extension String {
+  subscript(value: Int) -> Character {
+    self[index(at: value)]
+  }
+}
+
+public extension String {
+  subscript(value: NSRange) -> Substring {
+    self[value.lowerBound..<value.upperBound]
+  }
+}
+
+public extension String {
+  subscript(value: CountableClosedRange<Int>) -> Substring {
+    self[index(at: value.lowerBound)...index(at: value.upperBound)]
+  }
+
+  subscript(value: CountableRange<Int>) -> Substring {
+    self[index(at: value.lowerBound)..<index(at: value.upperBound)]
+  }
+
+  subscript(value: PartialRangeUpTo<Int>) -> Substring {
+    self[..<index(at: value.upperBound)]
+  }
+
+  subscript(value: PartialRangeThrough<Int>) -> Substring {
+    self[...index(at: value.upperBound)]
+  }
+
+  subscript(value: PartialRangeFrom<Int>) -> Substring {
+    self[index(at: value.lowerBound)...]
+  }
+}
+
+private extension String {
+  func index(at offset: Int) -> String.Index {
+    index(startIndex, offsetBy: offset)
+  }
 }

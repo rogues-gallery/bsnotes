@@ -21,15 +21,22 @@ public class Note: NSObject  {
 
     var content: NSMutableAttributedString = NSMutableAttributedString()
     var creationDate: Date? = Date()
-    var isCached = false
-    var sharedStorage = Storage.sharedInstance()
     var tagNames = [String]()
     let dateFormatter = DateFormatter()
     let undoManager = UndoManager()
 
+    public var tags = [String]()
     public var originalExtension: String?
-    
-    public var name: String = ""
+
+    /*
+     Filename with extension ie "example.textbundle"
+     */
+    public var name = String()
+
+    /*
+     Filename "example"
+     */
+    public var fileName = String()
     public var preview: String = ""
 
     public var isPinned: Bool = false
@@ -37,20 +44,33 @@ public class Note: NSObject  {
 
     public var imageUrl: [URL]?
     public var isParsed = false
-    private var caching = false
 
     private var decryptedTemporarySrc: URL?
     public var ciphertextWriter = OperationQueue.init()
 
     private var firstLineAsTitle = false
+    private var lastSelectedRange: NSRange?
+
+    public var isLoaded = false
+    public var isLoadedFromCache = false
+
+    public var password: String?
 
     // Load exist
     
-    init(url: URL, with project: Project) {
+    init(url: URL, with project: Project, modified: Date? = nil, created: Date? = nil) {
         self.ciphertextWriter.maxConcurrentOperationCount = 1
         self.ciphertextWriter.qualityOfService = .userInteractive
 
-        self.url = url
+        if let modified = modified {
+            modifiedLocalAt = modified
+        }
+        
+        if let created = created {
+            creationDate = created
+        }
+
+        self.url = url.standardized
         self.project = project
         super.init()
 
@@ -82,6 +102,48 @@ public class Note: NSObject  {
         self.parseURL()
     }
 
+    init(meta: NoteMeta, project: Project) {
+        ciphertextWriter.maxConcurrentOperationCount = 1
+        ciphertextWriter.qualityOfService = .userInteractive
+
+        isLoadedFromCache = true
+        isParsed = true
+        
+        url = meta.url
+        imageUrl = meta.imageUrl
+        title = meta.title
+        preview = meta.preview
+        modifiedLocalAt = meta.modificationDate
+        creationDate = meta.creationDate
+        isPinned = meta.pinned
+        self.project = project
+
+        super.init()
+
+        parseURL(loadProject: false)
+    }
+
+    func getMeta() -> NoteMeta {
+        return NoteMeta(
+            url: url,
+            imageUrl: imageUrl,
+            title: title,
+            preview: preview,
+            modificationDate: modifiedLocalAt,
+            creationDate: creationDate!,
+            pinned: isPinned
+        )
+    }
+
+    public func setLastSelectedRange(value: NSRange)
+    {
+        lastSelectedRange = value
+    }
+
+    public func getLastSelectedRange() -> NSRange? {
+        return lastSelectedRange
+    }
+
     public func hasTitle() -> Bool {
         return !firstLineAsTitle
     }
@@ -95,31 +157,64 @@ public class Note: NSObject  {
         return self.url
     }
     
-    public func loadProject(url: URL) {
-        self.url = url
+    public func loadProject() {
+        let sharedStorage = Storage.sharedInstance()
         
-        if let project = sharedStorage.getProjectBy(url: url) {
+        if let project = sharedStorage.getProjectByNote(url: url) {
             self.project = project
         }
     }
-        
-    func load(tags: Bool = true) {        
+
+    public func forceLoad() {
+        invalidateCache()
+        load()
+        loadFileAttributes()
+    }
+
+    func fastLoad() {
         if let attributedString = getContent() {
             content = NSMutableAttributedString(attributedString: attributedString)
         }
-        
-        if !isTrash() && !project.isArchive {
-            loadTags()
-        }
+
+        loadFileName()
+        isLoaded = true
     }
-        
+
+    func load() {
+        if let attributedString = getContent() {
+            content = NSMutableAttributedString(attributedString: attributedString)
+        }
+
+        loadFileName()
+
+        #if os(iOS)
+            loadPreviewInfo()
+        #else
+            if !isTrash() && !project.isArchive {
+                _ = loadTags()
+            }
+        #endif
+
+        isLoaded = true
+    }
+
+    public func loadFileWithAttributes() {
+        load()
+        loadFileAttributes()
+    }
+
+    public func loadFileAttributes() {
+        loadCreationDate()
+        loadModifiedLocalAt()
+    }
+
     func reload() -> Bool {
         guard let modifiedAt = getFileModifiedDate() else {
             return false
         }
                         
         if (modifiedAt != modifiedLocalAt) {
-            if container != .encryptedTextPack, let attributedString = getContent() {
+            if let attributedString = getContent() {
                 content = NSMutableAttributedString(attributedString: attributedString)
             }
             loadModifiedLocalAt()
@@ -131,18 +226,16 @@ public class Note: NSObject  {
 
     public func forceReload() {
         if container != .encryptedTextPack, let attributedString = getContent() {
-
             self.content = NSMutableAttributedString(attributedString: attributedString)
         }
     }
     
-    func loadModifiedLocalAt() {
-        guard let modifiedAt = getFileModifiedDate() else {
-            modifiedLocalAt = Date()
-            return
-        }
+    public func loadModifiedLocalAt() {
+        modifiedLocalAt = getFileModifiedDate() ?? Date.distantPast
+    }
 
-        modifiedLocalAt = modifiedAt
+    public func loadCreationDate() {
+        creationDate = getFileCreationDate() ?? Date.distantPast
     }
     
     public func isTextBundle() -> Bool {
@@ -150,41 +243,45 @@ public class Note: NSObject  {
     }
 
     public func isFullLoadedTextBundle() -> Bool {
-        let ext = getExtensionForContainer()
-        let path = url.appendingPathComponent("text.\(ext)").path
-
-        return FileManager.default.fileExists(atPath: path)
+        return getContentFileURL() != nil
     }
     
     public func getExtensionForContainer() -> String {
         return type.getExtension(for: container)
     }
-    
+
     public func getFileModifiedDate() -> Date? {
+        let url = getURL()
+
         do {
-            let url = getURL()
-            var path = url.path
-
-            if isTextBundle() {
-                let ext = getExtensionForContainer()
-                path = url.appendingPathComponent("text.\(ext)").path
-            }
-
-            let attr = try FileManager.default.attributesOfItem(atPath: path)
-
+            let attr = try FileManager.default.attributesOfItem(atPath: url.path)
+            
             return attr[FileAttributeKey.modificationDate] as? Date
         } catch {
             NSLog("Note modification date load error: \(error.localizedDescription)")
-            return nil
         }
+
+        return
+            (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?
+                .contentModificationDate
+    }
+
+    public func getFileCreationDate() -> Date? {
+        let url = getURL()
+
+        return
+            (try? url.resourceValues(forKeys: [.creationDateKey]))?
+                .creationDate
     }
     
-    func move(to: URL, project: Project? = nil) -> Bool {
+    func move(to: URL, project: Project? = nil, forceRewrite: Bool = false) -> Bool {
+        let sharedStorage = Storage.sharedInstance()
+
         do {
             var destination = to
 
-            if FileManager.default.fileExists(atPath: to.path) {
-                guard let project = project ?? sharedStorage.getProjectBy(url: to) else { return false }
+            if FileManager.default.fileExists(atPath: to.path) && !forceRewrite {
+                guard let project = project ?? sharedStorage.getProjectByNote(url: to) else { return false }
 
                 let ext = getExtensionForContainer()
                 destination = NameHelper.getUniqueFileName(name: title, project: project, ext: ext)
@@ -194,7 +291,16 @@ public class Note: NSObject  {
             removeCacheForPreviewImages()
 
             #if os(OSX)
+                let restorePin = isPinned
+                if isPinned {
+                    removePin()
+                }
+
                 overwrite(url: destination)
+
+                if restorePin {
+                    addPin()
+                }
             #endif
 
             NSLog("File moved from \"\(url.deletingPathExtension().lastPathComponent)\" to \"\(destination.deletingPathExtension().lastPathComponent)\"")
@@ -241,6 +347,14 @@ public class Note: NSObject  {
         if FileManager.default.fileExists(atPath: url.path) {
             if isTrash() || completely || isEmpty() {
                 try? FileManager.default.removeItem(at: url)
+
+                if type == .Markdown && container == .none {
+                    let urls = getAllImages()
+                    for url in urls {
+                        try? FileManager.default.removeItem(at: url.url)
+                    }
+                }
+
                 return nil
             }
 
@@ -249,6 +363,10 @@ public class Note: NSObject  {
 
                 var resultingItemUrl: NSURL?
                 if #available(iOS 11.0, *) {
+                    if let trash = Storage.sharedInstance().getDefaultTrash() {
+                        moveImages(to: trash)
+                    }
+
                     try? FileManager.default.trashItem(at: url, resultingItemURL: &resultingItemUrl)
 
                     if let result = resultingItemUrl, let path = result.path {
@@ -267,6 +385,11 @@ public class Note: NSObject  {
             }
 
             print("Note moved in custom Trash folder")
+
+            if let trash = Storage.sharedInstance().getDefaultTrash() {
+                moveImages(to: trash)
+            }
+            
             try? FileManager.default.moveItem(at: url, to: trashUrlTo)
 
             return [trashUrlTo, url]
@@ -278,47 +401,116 @@ public class Note: NSObject  {
 
     #if os(OSX)
     func removeFile(completely: Bool = false) -> Array<URL>? {
-        if FileManager.default.fileExists(atPath: url.path) {
-            if isTrash() {
-                try? FileManager.default.removeItem(at: url)
-                return nil
+        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+
+        if isTrash() {
+            try? FileManager.default.removeItem(at: url)
+
+            if type == .Markdown && container == .none {
+                let urls = getAllImages()
+                for url in urls {
+                    try? FileManager.default.removeItem(at: url.url)
+                }
             }
 
-            var resultingItemUrl: NSURL?
+            return nil
+        }
 
-            do {
+        do {
+            guard let dst = Storage.sharedInstance().trashItem(url: url) else {
+                var resultingItemUrl: NSURL?
                 try FileManager.default.trashItem(at: url, resultingItemURL: &resultingItemUrl)
 
-                if let dst = resultingItemUrl, let path = dst.path {
+                guard let dst = resultingItemUrl else { return nil }
 
-                    let originalURL = url
-                    let destination = URL(fileURLWithPath: path)
+                let originalURL = url
 
-                    overwrite(url: destination)
+                overwrite(url: dst as URL)
 
-                    NSLog("Note moved to trash: \(name)")
-
-                    return [self.url, originalURL]
-                }
-            } catch {
-                return nil
+                return [self.url, originalURL]
             }
+
+            if let trash = Storage.sharedInstance().getDefaultTrash() {
+                moveImages(to: trash)
+            }
+
+            try FileManager.default.moveItem(at: url, to: dst)
+
+            let originalURL = url
+            overwrite(url: dst)
+            return [self.url, originalURL]
+
+        } catch {
+            print("Trash error: \(error)")
         }
 
         return nil
     }
     #endif
-    
-    private func getTrashURL() -> URL? {
-        if let url = sharedStorage.getTrash(url: url) {
-            return url
+
+    public func move(from imageURL: URL, imagePath: String, to project: Project, copy: Bool = false) {
+        let dstPrefix = NotesTextProcessor.getAttachPrefix(url: imageURL)
+        let dest = project.url.appendingPathComponent(dstPrefix)
+
+        if !FileManager.default.fileExists(atPath: dest.path) {
+            try? FileManager.default.createDirectory(at: dest, withIntermediateDirectories: false, attributes: nil)
+
+            if let data = "true".data(using: .utf8) {
+                try? dest.setExtendedAttribute(data: data, forName: "es.fsnot.hidden.dir")
+            }
         }
-        
-        return nil
+
+        do {
+            if copy {
+                try FileManager.default.copyItem(at: imageURL, to: dest)
+            } else {
+                try FileManager.default.moveItem(at: imageURL, to: dest)
+            }
+        } catch {
+            if let fileName = ImagesProcessor.getFileName(from: imageURL, to: dest, ext: imageURL.pathExtension) {
+
+                let dest = dest.appendingPathComponent(fileName)
+
+                if copy {
+                    try? FileManager.default.copyItem(at: imageURL, to: dest)
+                } else {
+                    try? FileManager.default.moveItem(at: imageURL, to: dest)
+                }
+
+                let prefix = "]("
+                let postfix = ")"
+
+                let find = prefix + imagePath + postfix
+                let replace = prefix + dstPrefix + fileName + postfix
+
+                guard find != replace else { return }
+
+                while content.mutableString.contains(find) {
+                    let range = content.mutableString.range(of: find)
+                    content.replaceCharacters(in: range, with: replace)
+                }
+            }
+        }
     }
 
+    public func moveImages(to project: Project) {
+        if type == .Markdown && container == .none {
+            let imagesMeta = getAllImages()
+            for imageMeta in imagesMeta {
+                let imagePath = project.url.appendingPathComponent(imageMeta.path).path
+                project.storage.hideImages(directory: imagePath, srcPath: imagePath)
+
+                move(from: imageMeta.url, imagePath: imageMeta.path, to: project)
+            }
+
+            if imagesMeta.count > 0 {
+                save()
+            }
+        }
+    }
+    
     private func getDefaultTrashURL() -> URL? {
-        if let url = sharedStorage.getDefaultTrash()?.url {
+        if let url = Storage.sharedInstance().getDefaultTrash()?.url {
             return url
         }
 
@@ -349,8 +541,14 @@ public class Note: NSObject  {
             ) {
             preview = " – " + preview
         }
-        
-        return preview.condenseWhitespace()
+
+        preview = preview.condenseWhitespace()
+
+        if preview.starts(with: "![") {
+            return ""
+        }
+
+        return preview
     }
 
     @objc public func getPreviewForLabel() -> String {
@@ -392,17 +590,11 @@ public class Note: NSObject  {
     }
     
     func getContent() -> NSAttributedString? {
-        guard container != .encryptedTextPack else { return nil }
-
-        let options = getDocOptions()
-        var url = getURL()
-
-        if isTextBundle() {
-            let ext = getExtensionForContainer()
-            url.appendPathComponent("text.\(ext)")
-        }
+        guard container != .encryptedTextPack, let url = getContentFileURL() else { return nil }
 
         do {
+            let options = getDocOptions()
+
             return try NSAttributedString(url: url, options: options, documentAttributes: nil)
         } catch {
 
@@ -416,21 +608,7 @@ public class Note: NSObject  {
         
         return nil
     }
-    
-    func readModificatonDate() -> Date? {
-        var modifiedLocalAt: Date?
         
-        do {
-            let fileAttribute: [FileAttributeKey : Any] = try FileManager.default.attributesOfItem(atPath: url.path)
-            
-            modifiedLocalAt = fileAttribute[FileAttributeKey.modificationDate] as? Date
-        } catch {
-            NSLog(error.localizedDescription)
-        }
-        
-        return modifiedLocalAt
-    }
-    
     func isRTF() -> Bool {
         return type == .RichText
     }
@@ -440,12 +618,11 @@ public class Note: NSObject  {
     }
     
     func addPin(cloudSave: Bool = true) {
-        sharedStorage.pinned += 1
         isPinned = true
         
         #if CLOUDKIT || os(iOS)
         if cloudSave {
-            sharedStorage.saveCloudPins()
+            Storage.sharedInstance().saveCloudPins()
         }
         #elseif os(OSX)
             var pin = true
@@ -456,12 +633,11 @@ public class Note: NSObject  {
     
     func removePin(cloudSave: Bool = true) {
         if isPinned {
-            sharedStorage.pinned -= 1
             isPinned = false
             
             #if CLOUDKIT || os(iOS)
             if cloudSave {
-                sharedStorage.saveCloudPins()
+                Storage.sharedInstance().saveCloudPins()
             }
             #elseif os(OSX)
                 var pin = false
@@ -513,13 +689,14 @@ public class Note: NSObject  {
     }
     
     func getPrettifiedContent() -> String {
-        var content = self.content.string
-
         #if NOT_EXTENSION || os(OSX)
-        content = NotesTextProcessor.convertAppLinks(in: content)
+            let mutable = NotesTextProcessor.convertAppTags(in: self.content)
+            let content = NotesTextProcessor.convertAppLinks(in: mutable)
+
+            return cleanMetaData(content: content.string)
+        #else
+            return cleanMetaData(content: self.content.string)
         #endif
-        
-        return cleanMetaData(content: content)
     }
 
     public func overwrite(url: URL) {
@@ -531,7 +708,7 @@ public class Note: NSObject  {
     func parseURL(loadProject: Bool = true) {
         if (url.pathComponents.count > 0) {
             container = .withExt(rawValue: url.pathExtension)
-            name = url.pathComponents.last!
+            name = url.lastPathComponent
             
             if isTextBundle() {
                 let info = url.appendingPathComponent("info.json")
@@ -555,30 +732,77 @@ public class Note: NSObject  {
             }
             
             loadTitle()
+            loadFileName()
         }
 
         if loadProject {
-            self.loadProject(url: url)
+            self.loadProject()
         }
     }
 
     private func loadTitle() {
-        title = url
-            .deletingPathExtension()
-            .pathComponents
-            .last!
-            .replacingOccurrences(of: ":", with: "/")
+        if !(UserDefaultsManagement.firstLineAsTitle || project.firstLineAsTitle) {
+            title = url
+                .deletingPathExtension()
+                .pathComponents
+                .last!
+                .replacingOccurrences(of: ":", with: "/")
+        }
+    }
+
+    private func loadFileName() {
+        fileName = url.deletingPathExtension().lastPathComponent.replacingOccurrences(of: ":", with: "/")
+    }
+
+    public func getFileName() -> String {
+        return fileName
+    }
+
+    public func save(attributed: NSAttributedString) {
+        let mutable = NSMutableAttributedString(attributedString: attributed)
+
+        save(content: mutable)
+    }
+
+    public func save(content: NSMutableAttributedString) {
+        if isRTF() {
+            #if os(OSX)
+                self.content = content.unLoadUnderlines()
+            #else
+                self.content = content
+            #endif
+        } else {
+            self.content = content.unLoad()
+        }
+
+        save(attributedString: self.content)
+    }
+
+    public func replace(tag: String, with string: String) {
+        if isMarkdown() {
+            self.content = content.unLoad()
+        }
+
+        let replaceWith = NSAttributedString(string: string)
+        if string.count == 0 {
+            content.replace(string: tag + " ", with: replaceWith)
+            content.replace(string: tag, with: replaceWith)
+        }
+
+        content.replace(string: tag, with: replaceWith)
+        
+        save()
     }
         
     public func save(globalStorage: Bool = true) {
         if self.isMarkdown() {
             self.content = self.content.unLoadCheckboxes()
-            
+
             if UserDefaultsManagement.liveImagesPreview {
                 self.content = self.content.unLoadImages(note: self)
             }
         }
-        
+
         self.save(attributedString: self.content, globalStorage: globalStorage)
     }
 
@@ -597,30 +821,38 @@ public class Note: NSObject  {
                 }
             }
 
-            let contentSrc = getContentFileURL()
-            try fileWrapper.write(to: contentSrc, options: .atomic, originalContentsURL: nil)
-            try FileManager.default.setAttributes(attributes, ofItemAtPath: contentSrc.path)
+            let contentSrc: URL? = getContentFileURL()
+            let dst = contentSrc ?? getContentSaveURL()
+
+            var originalContentsURL: URL? = nil
+            if let contentSrc = contentSrc {
+                originalContentsURL = contentSrc
+            }
+
+            try fileWrapper.write(to: dst, options: .atomic, originalContentsURL: originalContentsURL)
+            try FileManager.default.setAttributes(attributes, ofItemAtPath: dst.path)
 
             if decryptedTemporarySrc != nil {
                 self.ciphertextWriter.cancelAllOperations()
                 self.ciphertextWriter.addOperation {
-                    usleep(useconds_t(1000000))
-
                     guard self.ciphertextWriter.operationCount == 1 else { return }
                     self.writeEncrypted()
                 }
+            } else {
+                modifiedLocalAt = Date()
             }
+
         } catch {
             NSLog("Write error \(error)")
             return
         }
 
         if globalStorage {
-            sharedStorage.add(self)
+            Storage.sharedInstance().add(self)
         }
     }
 
-    private func getContentFileURL() -> URL {
+    private func getContentSaveURL() -> URL {
         let url = getURL()
 
         if isTextBundle() {
@@ -631,13 +863,44 @@ public class Note: NSObject  {
         return url
     }
 
+    public func getContentFileURL() -> URL? {
+        var url = getURL()
+
+        if isTextBundle() {
+            let ext = getExtensionForContainer()
+            url = url.appendingPathComponent("text.\(ext)")
+
+            if !FileManager.default.fileExists(atPath: url.path) {
+                url = url.deletingLastPathComponent()
+
+                if let dirList = try? FileManager.default.contentsOfDirectory(atPath: url.path),
+                    let first = dirList.first(where: { $0.starts(with: "text.") })
+                {
+                    url = url.appendingPathComponent(first)
+
+                    return url
+                }
+
+                return nil
+            }
+
+            return url
+        }
+
+        if FileManager.default.fileExists(atPath: url.path) {
+            return url
+        }
+
+        return nil
+    }
+
     public func getFileWrapper(with imagesWrapper: FileWrapper? = nil) -> FileWrapper {
         let fileWrapper = getFileWrapper(attributedString: content)
 
         if isTextBundle() {
             let fileWrapper = getFileWrapper(attributedString: content)
             let info = getTextBundleJsonInfo()
-            let infoWrapper = self.getFileWrapper(attributedString: NSAttributedString(string: info))
+            let infoWrapper = self.getFileWrapper(attributedString: NSAttributedString(string: info), forcePlain: true)
 
             let ext = getExtensionForContainer()
             let textBundle = FileWrapper.init(directoryWithFileWrappers: [
@@ -721,10 +984,19 @@ public class Note: NSObject  {
         return attributes
     }
     
-    func getFileWrapper(attributedString: NSAttributedString) -> FileWrapper {
+    func getFileWrapper(attributedString: NSAttributedString, forcePlain: Bool = false) -> FileWrapper {
         do {
             let range = NSRange(location: 0, length: attributedString.length)
-            let documentAttributes = getDocAttributes()
+
+            var documentAttributes = getDocAttributes()
+
+            if forcePlain {
+                documentAttributes = [
+                    .documentType : NSAttributedString.DocumentType.plain,
+                    .characterEncoding : NSNumber(value: String.Encoding.utf8.rawValue)
+                ]
+            }
+
             return try attributedString.fileWrapper(from: range, documentAttributes: documentAttributes)
         } catch {
             return FileWrapper()
@@ -740,26 +1012,7 @@ public class Note: NSObject  {
 
         return title
     }
-    
-    func markdownCache() {
-        guard isMarkdown() && !self.caching && !self.isCached else { return }
-
-        self.caching = true
-
-        #if NOT_EXTENSION || os(OSX)
-        NotesTextProcessor.fullScan(note: self)
-        #endif
-
-        self.caching = false
-        self.isCached = true
-    }
-
-    public func reCache() {
-        self.isCached = false
-
-        markdownCache()
-    }
-    
+        
     func getDocOptions(with encoding: String.Encoding = .utf8) -> [NSAttributedString.DocumentReadingOptionKey: Any]  {
         if type == .RichText {
             return [.documentType : NSAttributedString.DocumentType.rtf]
@@ -777,7 +1030,6 @@ public class Note: NSObject  {
         if (type == .RichText) {
             options = [
                 .documentType : NSAttributedString.DocumentType.rtf
-
             ]
         } else {
             options = [
@@ -825,7 +1077,9 @@ public class Note: NSObject  {
                 new.append(newTagClean)
             }
         }
-        
+
+        let sharedStorage = Storage.sharedInstance()
+
         for n in new { sharedStorage.addTag(n) }
         
         var removedFromStorage = [String]()
@@ -876,6 +1130,8 @@ public class Note: NSObject  {
 
     public func removeTag(_ name: String) {
         guard tagNames.contains(name) else { return }
+
+        let sharedStorage = Storage.sharedInstance()
         
         if let i = tagNames.firstIndex(of: name) {
             tagNames.remove(at: i)
@@ -889,41 +1145,140 @@ public class Note: NSObject  {
         
         _ = saveTags(tagNames)
     }
-    
+
+#if os(OSX)
     public func loadTags() {
-        #if os(OSX)
-            let tags = try? url.resourceValues(forKeys: [.tagNamesKey])
-            if let tagNames = tags?.tagNames {
-                for tag in tagNames {
-                    if !self.tagNames.contains(tag) {
-                        self.tagNames.append(tag)
-                    }
-                    
-                    if !project.isTrash {
-                        sharedStorage.addTag(tag)
-                    }
+        let sharedStorage = Storage.sharedInstance()
+
+        if UserDefaultsManagement.inlineTags {
+            _ = scanContentTags()
+            return
+        }
+
+        let tags = try? url.resourceValues(forKeys: [.tagNamesKey])
+        if let tagNames = tags?.tagNames {
+            for tag in tagNames {
+                if !self.tagNames.contains(tag) {
+                    self.tagNames.append(tag)
+                }
+
+                if !project.isTrash {
+                    sharedStorage.addTag(tag)
                 }
             }
-        #else
-            if let data = try? url.extendedAttribute(forName: "com.apple.metadata:_kMDItemUserTags"),
-                let tags = NSKeyedUnarchiver.unarchiveObject(with: data) as? NSMutableArray {
-                self.tagNames.removeAll()
-                for tag in tags {
-                    if let tagName = tag as? String {
-                        self.tagNames.append(tagName)
+        }
+    }
+#else
+    public func loadTags() -> Bool {
+        let sharedStorage = Storage.sharedInstance()
 
-                        if !project.isTrash {
-                            sharedStorage.addTag(tagName)
+        if UserDefaultsManagement.inlineTags {
+            let changes = scanContentTags()
+            let qty = changes.0.count + changes.1.count
+
+            if (qty > 0) {
+                return true
+            }
+        }
+
+        return false
+    }
+#endif
+
+    public func scanContentTags() -> ([String], [String]) {
+        var added = [String]()
+        var removed = [String]()
+
+        let matchingOptions = NSRegularExpression.MatchingOptions(rawValue: 0)
+        let options: NSRegularExpression.Options = [
+            .allowCommentsAndWhitespace,
+            .anchorsMatchLines
+        ]
+
+        var tags = [String]()
+
+        do {
+            let range = NSRange(location: 0, length: content.length)
+            let re = try NSRegularExpression(pattern: NotesTextProcessor.tagsPattern, options: options)
+
+            re.enumerateMatches(
+                in: content.string,
+                options: matchingOptions,
+                range: range,
+                using: { (result, flags, stop) -> Void in
+
+                    guard var range = result?.range(at: 1) else { return }
+                    let cleanTag = content.mutableString.substring(with: range)
+
+                    range = NSRange(location: range.location - 1, length: range.length + 1)
+
+                    let codeBlock = NotesTextProcessor.getFencedCodeBlockRange(paragraphRange: range, string: content)
+                    let spanBlock = NotesTextProcessor.getSpanCodeBlockRange(content: content, range: range)
+
+                    if codeBlock == nil && spanBlock == nil && isValid(tag: cleanTag) {
+
+                        let parRange = content.mutableString.paragraphRange(for: range)
+                        let par = content.mutableString.substring(with: parRange)
+                        if par.starts(with: "    ") || par.starts(with: "\t") {
+                            return
+                        }
+                        
+                        if cleanTag.last == "/" {
+                            tags.append(String(cleanTag.dropLast()))
+                        } else {
+                            tags.append(cleanTag)
                         }
                     }
                 }
+            )
+        } catch {
+            print("Tags parsing: \(error)")
+        }
+
+        if tags.contains("notags") {
+            removed = self.tags
+
+            self.tags.removeAll()
+            return (added, removed)
+        }
+
+        for noteTag in self.tags {
+            if !tags.contains(noteTag) {
+                removed.append(noteTag)
             }
-        #endif
+        }
+        
+        for tag in tags {
+            if !self.tags.contains(tag) {
+                added.append(tag)
+            }
+        }
+
+
+        self.tags = tags
+
+        return (added, removed)
+    }
+
+    private var excludeRanges = [NSRange]()
+
+    public func isValid(tag: String) -> Bool {
+        if tag.isNumber {
+            return false
+        }
+
+        return true
     }
     
     public func getImageUrl(imageName: String) -> URL? {
         if imageName.starts(with: "http://") || imageName.starts(with: "https://") {
             return URL(string: imageName)
+        }
+
+        if isEncrypted() && (
+            imageName.starts(with: "/i/") || imageName.starts(with: "i/")
+        ) {
+            return project.url.appendingPathComponent(imageName)
         }
         
         if isTextBundle() {
@@ -937,28 +1292,26 @@ public class Note: NSObject  {
         return nil
     }
     
-    public func getImageCacheUrl() -> URL? {
-        return project.url.appendingPathComponent("/.cache/")
-    }
-
-    #if os(OSX)
-    public func getAllImages() -> [(url: URL, path: String)] {
+    public func getAllImages(content: NSMutableAttributedString? = nil) -> [(url: URL, path: String)] {
+        let content = content ?? self.content
         var res = [(url: URL, path: String)]()
 
         NotesTextProcessor.imageInlineRegex.regularExpression.enumerateMatches(in: content.string, options: NSRegularExpression.MatchingOptions(rawValue: 0), range: NSRange(0..<content.length), using:
             {(result, flags, stop) -> Void in
 
-                guard let range = result?.range(at: 3), self.content.length >= range.location else { return }
+            guard let range = result?.range(at: 3), content.length >= range.location else { return }
 
-                let imagePath = self.content.attributedSubstring(from: range).string
+            let imagePath = content.attributedSubstring(from: range).string.removingPercentEncoding
 
-                if let url = self.getImageUrl(imageName: imagePath), !url.isRemote() {
-                    res.append((url: url, path: imagePath))
-                }
+            if let imagePath = imagePath, let url = self.getImageUrl(imageName: imagePath), !url.isRemote() {
+                res.append((url: url, path: imagePath))
+            }
         })
 
         return res
     }
+
+    #if os(OSX)
 
     public func duplicate() {
         var url = self.url
@@ -987,16 +1340,15 @@ public class Note: NSObject  {
     }
     #endif
 
-    public func getImagePreviewUrl() -> [URL]? {
+    public func loadPreviewInfo() {
         if self.isParsed {
-            return self.imageUrl
+            return
         }
 
         var i = 0
         var urls: [URL] = []
         var mdImages: [String] = []
 
-        #if NOT_EXTENSION || os(OSX)
         NotesTextProcessor.imageInlineRegex.regularExpression.enumerateMatches(in: content.string, options: NSRegularExpression.MatchingOptions(rawValue: 0), range: NSRange(0..<content.length), using:
         {(result, flags, stop) -> Void in
 
@@ -1006,25 +1358,33 @@ public class Note: NSObject  {
 
             guard let range = result?.range(at: 3), self.content.length >= range.location else { return }
 
-            let imagePath = self.content.attributedSubstring(from: range).string
+            guard let imagePath = self.content.attributedSubstring(from: range).string.removingPercentEncoding else { return }
 
             if let url = self.getImageUrl(imageName: imagePath) {
                 if url.isRemote() {
+                    return
+                } else if FileManager.default.fileExists(atPath: url.path), url.isImage || url.isVideo {
+
+                    if container == .none && type == .Markdown {
+                        var prefix = imagePath
+                        if imagePath.first == "/" {
+                            prefix = String(imagePath.dropFirst())
+                        }
+                        let imageURL = project.url.appendingPathComponent(prefix)
+                        let mediaPath = imageURL.deletingLastPathComponent().path
+
+                        project.storage.hideImages(directory: mediaPath, srcPath: prefix)
+                    }
+
                     urls.append(url)
                     i += 1
-                } else if
-                    let cleanPath = url.path.removingPercentEncoding,
-                    FileManager.default.fileExists(atPath: cleanPath) {
-                        urls.append(URL(fileURLWithPath: cleanPath))
-                        i += 1
                 }
             }
 
-            if mdImages.count == 3 {
+            if mdImages.count > 3 {
                 stop.pointee = true
             }
         })
-        #endif
 
         var cleanText = content.string
         for image in mdImages {
@@ -1034,16 +1394,23 @@ public class Note: NSObject  {
         cleanText =
             cleanText
                 .replacingOccurrences(of: "#", with: "")
+                .replacingOccurrences(of: "```", with: "")
                 .replacingOccurrences(of: "- [ ]", with: "")
                 .replacingOccurrences(of: "- [x]", with: "")
+                .replacingOccurrences(of: "[[", with: "")
+                .replacingOccurrences(of: "]]", with: "")
 
         let components = cleanText.trim().components(separatedBy: "\n").filter({ $0 != "" })
 
         if let first = components.first {
             if UserDefaultsManagement.firstLineAsTitle || project.firstLineAsTitle {
-                self.title = first.trim()
-                self.preview = getPreviewLabel(with: components.dropFirst().joined(separator: " "))
-                firstLineAsTitle = true
+                loadYaml(components: components)
+
+                if title.count == 0 {
+                    title = first.trim()
+                    preview = getPreviewLabel(with: components.dropFirst().joined(separator: " "))
+                    firstLineAsTitle = true
+                }
             } else {
                 loadTitleFromFileName()
                 self.preview = getPreviewLabel(with: components.joined(separator: " "))
@@ -1058,8 +1425,38 @@ public class Note: NSObject  {
 
         self.imageUrl = urls
         self.isParsed = true
+    }
 
-        return urls
+    private func loadYaml(components: [String]) {
+        var tripleMinus = 0
+        var previewFragments = [String]()
+
+        if components.first == "---", components.count > 1 {
+            for string in components {
+                if string == "---" {
+                    tripleMinus += 1
+                }
+
+                let res = string.matchingStrings(regex: "(?:title: [\"\'”“])([^\\n]*)(?:[\"\'”“])")
+
+                if res.count > 0 {
+                    title = res[0][1].trim()
+                    firstLineAsTitle = true
+                }
+
+                if tripleMinus > 1 {
+                    previewFragments.append(string)
+                }
+            }
+        }
+
+        if previewFragments.count > 0 {
+            let previewString = previewFragments
+                .joined(separator: " ")
+                .replacingOccurrences(of: "---", with: "")
+
+            preview = getPreviewLabel(with: previewString)
+        }
     }
 
     private func loadTitleFromFileName() {
@@ -1085,13 +1482,7 @@ public class Note: NSObject  {
             return "assets/\(name)"
         }
 
-        return "/i/\(name)"
-    }
-
-    public func getMdImageURL(name: String) -> URL? {
-        let appendingPath = getMdImagePath(name: name)
-
-        return getImageUrl(imageName: appendingPath)
+        return "i/\(name)"
     }
 
     public func isEqualURL(url: URL) -> Bool {
@@ -1103,9 +1494,8 @@ public class Note: NSObject  {
     }
 
     public func append(image data: Data, url: URL? = nil) {
-        guard let fileName = ImagesProcessor.writeImage(data: data, url: url, note: self) else { return }
+        guard let path = ImagesProcessor.writeFile(data: data, url: url, note: self) else { return }
 
-        let path = getMdImagePath(name: fileName)
         var prefix = "\n\n"
         if content.length == 0 {
             prefix = String()
@@ -1136,7 +1526,9 @@ public class Note: NSObject  {
     }
 
     public func removeCacheForPreviewImages() {
-        guard let imageURLs = getImagePreviewUrl() else { return }
+        loadPreviewInfo()
+
+        guard let imageURLs = imageUrl else { return }
 
         for url in imageURLs {
             if let imageURL = getCacheForPreviewImage(at: url) {
@@ -1149,7 +1541,7 @@ public class Note: NSObject  {
 
     private func convertFlatToTextBundle() -> URL {
         let temporary = URL(fileURLWithPath: NSTemporaryDirectory())
-        let temporaryProject = Project(url: temporary)
+        let temporaryProject = Project(storage: project.storage, url: temporary)
 
         let currentName = url.deletingPathExtension().lastPathComponent
         let note = Note(name: currentName, project: temporaryProject, type: type, cont: .textBundleV2)
@@ -1157,6 +1549,15 @@ public class Note: NSObject  {
         note.originalExtension = url.pathExtension
         note.content = content
         note.save(globalStorage: false)
+
+        if type == .Markdown {
+            let imagesMeta = getAllImages()
+            for imageMeta in imagesMeta {
+                moveFilesFlatToAssets(note: note, from: imageMeta.url, imagePath: imageMeta.path, to: note.url)
+            }
+
+            note.save(globalStorage: false)
+        }
 
         return note.url
     }
@@ -1179,8 +1580,90 @@ public class Note: NSObject  {
                 container = .none
 
                 try? FileManager.default.moveItem(at: flatURL, to: uniqueURL)
+
+                moveFilesAssetsToFlat(content: uniqueURL, src: textBundleURL, project: project)
+
                 try? FileManager.default.removeItem(at: textBundleURL)
             }
+        }
+    }
+
+    private func moveFilesFlatToAssets(note: Note, from imageURL: URL, imagePath: String, to dest: URL) {
+        let dest = dest.appendingPathComponent("assets")
+        let fileName = imageURL.lastPathComponent
+
+        if !FileManager.default.fileExists(atPath: dest.path) {
+            try? FileManager.default.createDirectory(at: dest, withIntermediateDirectories: false, attributes: nil)
+        }
+
+        do {
+            try FileManager.default.moveItem(at: imageURL, to: dest.appendingPathComponent(fileName))
+
+            let prefix = "]("
+            let postfix = ")"
+
+            let find = prefix + imagePath + postfix
+            let replace = prefix + "assets/" + imageURL.lastPathComponent + postfix
+
+            guard find != replace else { return }
+
+            while note.content.mutableString.contains(find) {
+                let range = note.content.mutableString.range(of: find)
+                note.content.replaceCharacters(in: range, with: replace)
+            }
+        } catch {
+            print("Enc error: \(error)")
+        }
+    }
+
+    private func moveFilesAssetsToFlat(content: URL, src: URL, project: Project) {
+        guard let content = try? String(contentsOf: content) else { return }
+
+        let mutableContent = NSMutableAttributedString(attributedString: NSAttributedString(string: content))
+
+        let imagesMeta = getAllImages(content: mutableContent)
+        for imageMeta in imagesMeta {
+            let fileName = imageMeta.url.lastPathComponent
+            var dst: URL?
+            var prefix = "files/"
+
+            if imageMeta.url.isImage {
+                prefix = "i/"
+            }
+
+            dst = project.url.appendingPathComponent(prefix + fileName)
+
+            guard let moveTo = dst else { continue }
+
+            let dstDir = project.url.appendingPathComponent(prefix)
+            let moveFrom = src.appendingPathComponent("assets/" + fileName)
+
+            do {
+                if !FileManager.default.fileExists(atPath: dstDir.path) {
+                    try? FileManager.default.createDirectory(at: dstDir, withIntermediateDirectories: false, attributes: nil)
+                }
+
+                try FileManager.default.moveItem(at: moveFrom, to: moveTo)
+
+            } catch {
+                if let fileName = ImagesProcessor.getFileName(from: moveTo, to: dstDir, ext: moveTo.pathExtension) {
+
+                    let moveTo = dstDir.appendingPathComponent(fileName)
+                    try? FileManager.default.moveItem(at: moveFrom, to: moveTo)
+                }
+            }
+
+            let find = "](assets/" + fileName + ")"
+            let replace = "](" + prefix + fileName + ")"
+
+            guard find != replace else { return }
+
+            while mutableContent.mutableString.contains(find) {
+                let range = mutableContent.mutableString.range(of: find)
+                mutableContent.replaceCharacters(in: range, with: replace)
+            }
+
+            try? mutableContent.string.write(to: url, atomically: true, encoding: String.Encoding.utf8)
         }
     }
 
@@ -1211,17 +1694,25 @@ public class Note: NSObject  {
         guard let baseTextPack = self.decryptedTemporarySrc else { return }
 
         let textPackURL = baseTextPack.appendingPathExtension("textpack")
+        var password = self.password
 
         SSZipArchive.createZipFile(atPath: textPackURL.path, withContentsOfDirectory: baseTextPack.path)
 
         do {
-            let item = KeychainPasswordItem(service: KeychainConfiguration.serviceName, account: "Master Password")
-            let password = try item.readPassword()
+            if password == nil {
+                let item = KeychainPasswordItem(service: KeychainConfiguration.serviceName, account: "Master Password")
+                password = try item.readPassword()
+            }
+
+            guard let unwrappedPassword = password else { return }
 
             let data = try Data(contentsOf: textPackURL)
-            let encryptedData = RNCryptor.encrypt(data: data, withPassword: password)
-
+            let encryptedData = RNCryptor.encrypt(data: data, withPassword: unwrappedPassword)
             try encryptedData.write(to: self.url)
+
+            let attributes = getFileAttributes()
+            try FileManager.default.setAttributes(attributes, ofItemAtPath: url.path)
+
             print("FSNotes successfully writed encrypted data for: \(title)")
 
             try FileManager.default.removeItem(at: textPackURL)
@@ -1231,6 +1722,8 @@ public class Note: NSObject  {
     }
 
     public func unLock(password: String) -> Bool {
+        let sharedStorage = Storage.sharedInstance()
+
         do {
             let name = url.deletingPathExtension().lastPathComponent
             let data = try Data(contentsOf: url)
@@ -1259,7 +1752,6 @@ public class Note: NSObject  {
             loadTitle()
             
             invalidateCache()
-            reCache()
 
             return true
         } catch {
@@ -1279,7 +1771,7 @@ public class Note: NSObject  {
             let textPackURL = url.appendingPathExtension("textpack")
             try decryptedData.write(to: textPackURL)
 
-            let newURL = project.url.appendingPathComponent(name).appendingPathExtension("textbundle")
+            let newURL = project.url.appendingPathComponent(name + ".textbundle", isDirectory: false)
             url = newURL
             container = .textBundleV2
 
@@ -1298,7 +1790,7 @@ public class Note: NSObject  {
             self.decryptedTemporarySrc = nil
 
             load()
-            reCache()
+            parseURL()
 
             return true
 
@@ -1328,8 +1820,8 @@ public class Note: NSObject  {
             convertTextBundleToFlat(name: name)
 
             load()
-            reCache()
-
+            parseURL()
+            
             return true
 
         } catch {
@@ -1366,6 +1858,7 @@ public class Note: NSObject  {
             
             url = encryptedURL
             container = .encryptedTextPack
+            parseURL()
             
             try encrypted.write(to: encryptedURL)
             try FileManager.default.removeItem(at: originalSrc)
@@ -1382,15 +1875,11 @@ public class Note: NSObject  {
         }
     }
 
-    private func cleanOut() {
+    public func cleanOut() {
         imageUrl = nil
-
         content = NSMutableAttributedString(string: String())
         preview = String()
         title = String()
-
-        isCached = false
-        caching = false
     }
 
     private func removeTempContainer() {
@@ -1407,6 +1896,10 @@ public class Note: NSObject  {
         return (container == .encryptedTextPack || isUnlocked())
     }
 
+    public func isEncryptedAndLocked() -> Bool {
+        return container == .encryptedTextPack && decryptedTemporarySrc == nil
+    }
+
     public func lock() -> Bool {
         guard let temporaryURL = self.decryptedTemporarySrc else { return false }
 
@@ -1416,7 +1909,7 @@ public class Note: NSObject  {
 
                 container = .encryptedTextPack
                 cleanOut()
-                loadTitle()
+                parseURL()
 
                 try? FileManager.default.removeItem(at: temporaryURL)
                 self.decryptedTemporarySrc = nil
@@ -1432,17 +1925,11 @@ public class Note: NSObject  {
         return (isPinned || isEncrypted())
     }
 
-    public func getFileName() -> String {
-        let fileName = url.deletingPathExtension().pathComponents.last!.replacingOccurrences(of: ":", with: "/")
-
-        return fileName
-    }
-
     public func getShortTitle() -> String {
         let fileName = getFileName()
 
         if fileName.isValidUUID {
-            return "~ § ~"
+            return "▽"
         }
 
         return fileName
@@ -1453,6 +1940,12 @@ public class Note: NSObject  {
             return getFileName()
         }
 
+        #if os(iOS)
+        if !project.firstLineAsTitle {
+            return getFileName()
+        }
+        #endif
+
         if title.count > 0 {
             if title.isValidUUID && (
                 UserDefaultsManagement.firstLineAsTitle || project.firstLineAsTitle
@@ -1460,6 +1953,10 @@ public class Note: NSObject  {
                 return nil
             }
 
+            if title.starts(with: "![") {
+                return nil;
+            }
+            
             return title
         }
 
@@ -1468,6 +1965,75 @@ public class Note: NSObject  {
             if previewCharsQty > 0 {
                 return "Untitled Note"
             }
+        }
+
+        return nil
+    }
+
+    public func getGitPath() -> String {
+        var path = name
+
+        if let gitPath = project.getGitPath() {
+            path = gitPath + "/" + name
+        }
+
+        return path
+    }
+
+    public func rename(to name: String) {
+        var name = name
+        var i = 1
+
+        while project.fileExist(fileName: name, ext: url.pathExtension) {
+
+            // disables renaming loop
+            if fileName.startsWith(string: name) {
+                return
+            }
+
+            let items = name.split(separator: " ")
+
+            if let last = items.last, let position = Int(last) {
+                let full = items.dropLast()
+
+                name = full.joined(separator: " ") + " " + String(position + 1)
+
+                i = position + 1
+            } else {
+                name = name + " " + String(i)
+
+                i += 1
+            }
+        }
+
+        let isPinned = self.isPinned
+        let dst = getNewURL(name: name)
+
+        removePin()
+
+        if isEncrypted() {
+            _ = lock()
+        }
+
+        if move(to: dst) {
+            url = dst
+            parseURL()
+        }
+
+        if isPinned {
+            addPin()
+        }
+    }
+
+    public func getCursorPosition() -> Int? {
+        var position: Int?
+
+        if let data = try? url.extendedAttribute(forName: "co.fluder.fsnotes.cursor") {
+            position = data.withUnsafeBytes { (ptr: UnsafeRawBufferPointer) -> Int in
+                ptr.load(as: Int.self)
+            }
+
+            return position
         }
 
         return nil

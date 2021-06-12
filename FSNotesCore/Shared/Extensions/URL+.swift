@@ -8,6 +8,12 @@
 
 import Foundation
 
+#if os(iOS)
+    import MobileCoreServices
+#else
+    import CoreServices
+#endif
+
 public extension URL {
     /// Get extended attribute.
     func extendedAttribute(forName name: String) throws -> Data {
@@ -93,11 +99,27 @@ public extension URL {
         return (self.absoluteString.starts(with: "http://") || self.absoluteString.starts(with: "https://"))
     }
 
+    func isHidden() -> Bool {
+        if let data = try? extendedAttribute(forName: "es.fsnot.hidden.dir"), String(data: data, encoding: .utf8) == "true" {
+           return true
+        }
+
+        return false
+    }
+
+    func hasNonHiddenBit() -> Bool {
+        if let data = try? extendedAttribute(forName: "es.fsnot.hidden.dir"), String(data: data, encoding: .utf8) == "false" {
+           return true
+        }
+
+        return false
+    }
+
     var attributes: [FileAttributeKey: Any]? {
         do {
             return try FileManager.default.attributesOfItem(atPath: path)
         } catch let error as NSError {
-            print("FileAttribute error: \(error)")
+            //print("FileAttribute error: \(error)")
         }
         return nil
     }
@@ -121,5 +143,30 @@ public extension URL {
 
     var typeIdentifier: String? {
         return (try? resourceValues(forKeys: [.typeIdentifierKey]))?.typeIdentifier
+    }
+
+    var fileUTType: CFString? {
+        let unmanagedFileUTI = UTTypeCreatePreferredIdentifierForTag(kUTTagClassFilenameExtension, pathExtension as CFString, nil)
+        return unmanagedFileUTI?.takeRetainedValue()
+    }
+
+    var isVideo: Bool {
+        guard let fileUTI = fileUTType else { return false }
+
+        return UTTypeConformsTo(fileUTI, kUTTypeMovie)
+            || UTTypeConformsTo(fileUTI, kUTTypeVideo)
+            || UTTypeConformsTo(fileUTI, kUTTypeQuickTimeMovie)
+            || UTTypeConformsTo(fileUTI, kUTTypeMPEG)
+            || UTTypeConformsTo(fileUTI, kUTTypeMPEG2Video)
+            || UTTypeConformsTo(fileUTI, kUTTypeMPEG2TransportStream)
+            || UTTypeConformsTo(fileUTI, kUTTypeMPEG4)
+            || UTTypeConformsTo(fileUTI, kUTTypeAppleProtectedMPEG4Video)
+            || UTTypeConformsTo(fileUTI, kUTTypeAVIMovie)
+    }
+
+    var isImage: Bool {
+        guard let fileUTI = fileUTType else { return false }
+
+        return UTTypeConformsTo(fileUTI, kUTTypeImage)
     }
 }

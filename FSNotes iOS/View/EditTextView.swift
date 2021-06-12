@@ -12,6 +12,7 @@ import MobileCoreServices
 class EditTextView: UITextView, UITextViewDelegate {
 
     public var isAllowedScrollRect = true
+    public var lastContentOffset: CGPoint?
 
     private var undoIcon = UIImage(named: "undo.png")
     private var redoIcon = UIImage(named: "redo.png")
@@ -20,11 +21,42 @@ class EditTextView: UITextView, UITextViewDelegate {
 
     public static var note: Note?
     public static var isBusyProcessing: Bool = false
-    public static var isPasteOperation: Bool = false
+    public static var shouldForceRescan: Bool = false
+    public static var lastRemoved: String?
 
     public var lasTouchPoint: CGPoint?
 
     public static var imagesLoaderQueue = OperationQueue.init()
+
+    required init?(coder: NSCoder) {
+        if #available(iOS 13.2, *) {
+            super.init(coder: coder)
+        }
+        else {
+            super.init(frame: .zero, textContainer: nil)
+            self.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            self.contentMode = .scaleToFill
+
+            self.isScrollEnabled = false   // causes expanding height
+
+            // Auto Layout
+            self.translatesAutoresizingMaskIntoConstraints = false
+            self.font = UIFont(name: "HelveticaNeue", size: 18)
+        }
+
+        autocorrectionType = UserDefaultsManagement.editorAutocorrection ? .yes : .no
+        spellCheckingType = UserDefaultsManagement.editorSpellChecking ? .yes : .no
+    }
+
+    override func caretRect(for position: UITextPosition) -> CGRect {
+        var superRect = super.caretRect(for: position)
+        guard let font = self.font else { return superRect }
+
+        // "descender" is expressed as a negative value,
+        // so to add its height you must subtract its value
+        superRect.size.height = font.pointSize - font.descender
+        return superRect
+    }
 
     override func scrollRectToVisible(_ rect: CGRect, animated: Bool) {
         if self.isAllowedScrollRect {
@@ -61,10 +93,16 @@ class EditTextView: UITextView, UITextViewDelegate {
         }
 
         if self.textStorage.length >= self.selectedRange.upperBound {
-            if let rtfd = try? attributedString.data(from: NSMakeRange(0, attributedString.length), documentAttributes: [NSAttributedString.DocumentAttributeKey.documentType:NSAttributedString.DocumentType.rtfd]) {
+            if let rtfd = try? attributedString.data(
+                from: NSMakeRange(0, attributedString.length),
+                documentAttributes: [
+                    NSAttributedString.DocumentAttributeKey.documentType:
+                        NSAttributedString.DocumentType.rtfd
+                ]
+            ) {
+                UIPasteboard.general.setData(rtfd, forPasteboardType: "es.fsnot.attributed.text"
+                )
 
-                UIPasteboard.general.setData(rtfd, forPasteboardType: kUTTypeFlatRTFD as String)
-                
                 if let textRange = getTextRange() {
                     self.replace(textRange, withText: "")
                 }
@@ -88,7 +126,7 @@ class EditTextView: UITextView, UITextViewDelegate {
         note.invalidateCache()
 
         for item in UIPasteboard.general.items {
-            if let rtfd = item["com.apple.flat-rtfd"] as? Data {
+            if let rtfd = item["es.fsnot.attributed.text"] as? Data {
                 if let attributedString = try? NSAttributedString(data: rtfd, options: [NSAttributedString.DocumentReadingOptionKey.documentType : NSAttributedString.DocumentType.rtfd], documentAttributes: nil) {
 
                     let attributedString = NSMutableAttributedString(attributedString: attributedString)
@@ -105,22 +143,30 @@ class EditTextView: UITextView, UITextViewDelegate {
 
                     self.layoutManager.invalidateDisplay(forCharacterRange: NSRange(location: 0, length: self.textStorage.length))
 
-                    NotesTextProcessor.scanMarkdownSyntax(textStorage, paragraphRange: newRange, note: note)
+                    NotesTextProcessor.highlightMarkdown(attributedString: textStorage, paragraphRange: newRange, note: note)
 
-                    note.content = NSMutableAttributedString(attributedString: self.attributedText)
-                    note.save()
+                    note.save(attributed: attributedText)
 
+                    UIApplication.getVC().notesTable.reloadData()
                     return
                 }
             }
 
             if let image = item["public.jpeg"] as? UIImage, let data = image.jpegData(compressionQuality: 1) {
                 saveImageClipboard(data: data, note: note)
+
+                note.save(attributed: attributedText)
+
+                UIApplication.getVC().notesTable.reloadData()
                 return
             }
 
             if let image = item["public.png"] as? UIImage, let data = image.pngData() {
                 saveImageClipboard(data: data, note: note)
+
+                note.save(attributed: attributedText)
+
+                UIApplication.getVC().notesTable.reloadData()
                 return
             }
         }
@@ -157,9 +203,10 @@ class EditTextView: UITextView, UITextViewDelegate {
 
                 UIPasteboard.general.setItems([
                     [kUTTypePlainText as String: attributedString.string],
+                    ["es.fsnot.attributed.text": rtfd],
                     [kUTTypeFlatRTFD as String: rtfd]
                 ])
-                
+
                 return
             }
         }
@@ -176,10 +223,9 @@ class EditTextView: UITextView, UITextViewDelegate {
     }
     
     public func initUndoRedoButons() {
-        guard
-            let pageController = UIApplication.shared.windows[0].rootViewController as? PageViewController,
-            let vc = pageController.orderedViewControllers[1] as? UINavigationController,
-            let evc = vc.viewControllers[0] as? EditorViewController,
+        guard let pc = UIApplication.shared.windows[0].rootViewController as? BasicViewController,
+            let nav = pc.containerController.viewControllers[1] as? UINavigationController,
+            let evc = nav.viewControllers.first as? EditorViewController,
             let ea = evc.editArea,
             let um = ea.undoManager else {
                 return
@@ -203,29 +249,59 @@ class EditTextView: UITextView, UITextViewDelegate {
     }
 
     public func saveImageClipboard(data: Data, note: Note, ext: String? = nil) {
-        if let string = ImagesProcessor.writeImage(data: data, note: note, ext: ext) {
-            let path = note.getMdImagePath(name: string)
+        if let path = ImagesProcessor.writeFile(data: data, note: note, ext: ext) {
             if let imageUrl = note.getImageUrl(imageName: path) {
 
                 let range = NSRange(location: selectedRange.location, length: 1)
-                let attachment = ImageAttachment(title: "", path: path, url: imageUrl, cache: nil, invalidateRange: range, note: note)
+                let attachment = NoteAttachment(title: "", path: path, url: imageUrl, invalidateRange: range, note: note)
 
                 if let attributedString = attachment.getAttributedString() {
-                    let newLineImage = NSMutableAttributedString(attributedString: attributedString)
-                    newLineImage.append(NSAttributedString(string: "\n"))
 
-                    self.undoManager?.beginUndoGrouping()
-                    self.replace(selectedTextRange!, withText: newLineImage.string)
+                    undoManager?.beginUndoGrouping()
+                    textStorage.replaceCharacters(in: selectedRange, with: attributedString)
+                    selectedRange = NSRange(location: selectedRange.location + attributedString.length, length: 0)
+                    undoManager?.endUndoGrouping()
 
-                    let newRange = NSRange(location: selectedRange.location - newLineImage.length, length: newLineImage.length)
-                    self.textStorage.replaceCharacters(in: newRange, with: newLineImage)
-                    self.undoManager?.endUndoGrouping()
+                    let undo = Undo(range: range, string: attributedString)
+                    undoManager?.registerUndo(withTarget: self, selector: #selector(undoImage), object: undo)
 
+                    initUndoRedoButons()
                     applyLeftParagraphStyle()
                     return
                 }
             }
         }
+    }
+
+    @IBAction func undoImage(_ object: Any) {
+        guard let undo = object as? Undo else { return }
+
+        undoManager?.beginUndoGrouping()
+        textStorage.replaceCharacters(in: undo.range, with: "")
+        undoManager?.endUndoGrouping()
+
+        let range = NSRange(location: undo.range.location, length: 0)
+        let redo = Undo(range: range, string: undo.string)
+
+        undoManager?.registerUndo(withTarget: self, selector: #selector(redoImage), object: redo)
+
+        initUndoRedoButons()
+    }
+
+    @IBAction func redoImage(_ object: Any) {
+        guard let redo = object as? Undo else { return }
+
+        undoManager?.beginUndoGrouping()
+        textStorage.replaceCharacters(in: redo.range, with: redo.string)
+        selectedRange = NSRange(location: selectedRange.location + redo.string.length, length: 0)
+        undoManager?.endUndoGrouping()
+
+        let range = NSRange(location: redo.range.location, length: redo.string.length)
+        let undo = Undo(range: range, string: redo.string)
+
+        undoManager?.registerUndo(withTarget: self, selector: #selector(undoImage), object: undo)
+
+        initUndoRedoButons()
     }
     
     public func isTodo(at location: Int) -> Bool {
@@ -274,4 +350,19 @@ class EditTextView: UITextView, UITextViewDelegate {
 
         return false
     }
+
+    public func isWikiLink(at location: Int) -> Bool {
+        let storage = self.textStorage
+
+        if storage.length > location, let path = storage.attribute(.link, at: location, effectiveRange: nil) as? String, path.starts(with: "fsnotes://find?id=") {
+            return true
+        }
+
+        return false
+    }
+}
+
+struct Undo {
+    var range: NSRange
+    var string: NSAttributedString
 }

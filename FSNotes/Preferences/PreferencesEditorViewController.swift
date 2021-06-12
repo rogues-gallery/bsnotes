@@ -9,10 +9,25 @@
 import Cocoa
 
 class PreferencesEditorViewController: NSViewController {
-    
+
+    @IBOutlet weak var codeFont: NSTextField!
+    @IBOutlet weak var codeBlockHighlight: NSButton!
+    @IBOutlet weak var highlightIndentedCodeBlocks: NSButton!
+    @IBOutlet weak var markdownCodeTheme: NSPopUpButton!
+    @IBOutlet weak var liveImagesPreview: NSButton!
+    @IBOutlet weak var inEditorFocus: NSButton!
+    @IBOutlet weak var restoreCursorButton: NSButton!
+    @IBOutlet weak var autocloseBrackets: NSButton!
+    @IBOutlet weak var lineSpacing: NSSlider!
+    @IBOutlet weak var imagesWidth: NSSlider!
+    @IBOutlet weak var lineWidth: NSSlider!
+    @IBOutlet weak var spacesInsteadTab: NSButton!
+    @IBOutlet weak var marginSize: NSSlider!
+    @IBOutlet weak var inlineTags: NSButton!
+
     override func viewWillAppear() {
         super.viewWillAppear()
-        preferredContentSize = NSSize(width: 474, height: 440)
+        preferredContentSize = NSSize(width: 476, height: 495)
     }
 
     override func viewDidLoad() {
@@ -24,6 +39,8 @@ class PreferencesEditorViewController: NSViewController {
         self.view.window!.title = NSLocalizedString("Preferences", comment: "")
 
         codeBlockHighlight.state = UserDefaultsManagement.codeBlockHighlight ? NSControl.StateValue.on : NSControl.StateValue.off
+
+        highlightIndentedCodeBlocks.state = UserDefaultsManagement.indentedCodeBlockHighlighting ? NSControl.StateValue.on : NSControl.StateValue.off
 
         liveImagesPreview.state = UserDefaultsManagement.liveImagesPreview ? NSControl.StateValue.on : NSControl.StateValue.off
 
@@ -42,20 +59,9 @@ class PreferencesEditorViewController: NSViewController {
         spacesInsteadTab.state = UserDefaultsManagement.spacesInsteadTabs ? .on : .off
 
         marginSize.floatValue = UserDefaultsManagement.marginSize
+
+        inlineTags.state = UserDefaultsManagement.inlineTags ? .on : .off
     }
-    
-    @IBOutlet weak var codeFont: NSTextField!
-    @IBOutlet weak var codeBlockHighlight: NSButton!
-    @IBOutlet weak var markdownCodeTheme: NSPopUpButton!
-    @IBOutlet weak var liveImagesPreview: NSButton!
-    @IBOutlet weak var inEditorFocus: NSButton!
-    @IBOutlet weak var restoreCursorButton: NSButton!
-    @IBOutlet weak var autocloseBrackets: NSButton!
-    @IBOutlet weak var lineSpacing: NSSlider!
-    @IBOutlet weak var imagesWidth: NSSlider!
-    @IBOutlet weak var lineWidth: NSSlider!
-    @IBOutlet weak var spacesInsteadTab: NSButton!
-    @IBOutlet weak var marginSize: NSSlider!
 
     //MARK: global variables
 
@@ -66,16 +72,14 @@ class PreferencesEditorViewController: NSViewController {
 
         if UserDefaultsManagement.liveImagesPreview {
             if let note = EditTextView.note, let storage = vc.editArea.textStorage, storage.length > 0 {
-                let processor = ImagesProcessor(styleApplier: storage, note: note)
-                processor.unLoad()
                 storage.setAttributedString(note.content)
             }
         }
 
         UserDefaultsManagement.liveImagesPreview = (sender.state == NSControl.StateValue.on)
 
-        if let note = EditTextView.note, !UserDefaultsManagement.preview {
-            NotesTextProcessor.fullScan(note: note)
+        if let note = EditTextView.note, vc.currentPreviewState == .off {
+            NotesTextProcessor.highlight(note: note)
             vc.refillEditArea()
         }
     }
@@ -83,7 +87,8 @@ class PreferencesEditorViewController: NSViewController {
     @IBAction func codeBlockHighlight(_ sender: NSButton) {
         UserDefaultsManagement.codeBlockHighlight = (sender.state == NSControl.StateValue.on)
 
-        restart()
+        guard let vc = ViewController.shared() else { return }
+        vc.refillEditArea()
     }
 
     @IBAction func markdownCodeThemeAction(_ sender: NSPopUpButton) {
@@ -94,9 +99,9 @@ class PreferencesEditorViewController: NSViewController {
 
         UserDefaultsManagement.codeTheme = item.title
 
+        MPreviewView.template = nil
         NotesTextProcessor.hl = nil
-        self.storage.fullCacheReset()
-        vc.refillEditArea()
+        vc.refillEditArea(force: true)
     }
 
     @IBAction func inEditorFocus(_ sender: NSButton) {
@@ -123,8 +128,12 @@ class PreferencesEditorViewController: NSViewController {
 
         UserDefaultsManagement.imagesWidth = sender.floatValue
 
-        if let note = EditTextView.note, !UserDefaultsManagement.preview {
-            NotesTextProcessor.fullScan(note: note)
+        var temporary = URL(fileURLWithPath: NSTemporaryDirectory())
+        temporary.appendPathComponent("ThumbnailsBig")
+        try? FileManager.default.removeItem(at: temporary)
+
+        if let note = EditTextView.note, vc.currentPreviewState == .off {
+            NotesTextProcessor.highlight(note: note)
             vc.refillEditArea()
         }
     }
@@ -134,8 +143,14 @@ class PreferencesEditorViewController: NSViewController {
 
         UserDefaultsManagement.lineWidth = sender.floatValue
 
-        if let _ = EditTextView.note, !UserDefaultsManagement.preview {
+        if let _ = EditTextView.note {
             vc.editArea.updateTextContainerInset()
+
+            MPreviewView.template = nil
+            NotesTextProcessor.hl = nil
+
+            vc.editArea.clear()
+            vc.refillEditArea(force: true)
         }
     }
 
@@ -168,8 +183,14 @@ class PreferencesEditorViewController: NSViewController {
 
         UserDefaultsManagement.marginSize = sender.floatValue
 
-        if let _ = EditTextView.note, !UserDefaultsManagement.preview {
+        if let _ = EditTextView.note {
             vc.editArea.updateTextContainerInset()
+
+            MPreviewView.template = nil
+            NotesTextProcessor.hl = nil
+
+            vc.editArea.clear()
+            vc.refillEditArea(force: true)
         }
     }
 
@@ -181,11 +202,11 @@ class PreferencesEditorViewController: NSViewController {
         UserDefaultsManagement.codeFont = newFont
         NotesTextProcessor.codeFont = newFont
 
-        if let note = EditTextView.note {
-            Storage.sharedInstance().fullCacheReset()
-            note.reCache()
-            vc.refillEditArea()
-        }
+        MPreviewView.template = nil
+        NotesTextProcessor.hl = nil
+
+        vc.editArea.clear()
+        vc.refillEditArea(force: true)
 
         setCodeFont()
     }
@@ -193,5 +214,30 @@ class PreferencesEditorViewController: NSViewController {
     private func setCodeFont() {
         codeFont.font = NSFont(name: UserDefaultsManagement.codeFont.fontName, size: 13)
         codeFont.stringValue = "\(UserDefaultsManagement.codeFont.fontName) \(UserDefaultsManagement.codeFont.pointSize)pt"
+    }
+
+    @IBAction func inlineTags(_ sender: NSButton) {
+        UserDefaultsManagement.inlineTags = (sender.state == .on)
+
+        guard let vc = ViewController.shared() else { return }
+
+        Storage.sharedInstance().tags = []
+
+        for note in Storage.sharedInstance().noteList {
+            note.tags = []
+
+            if UserDefaultsManagement.inlineTags {
+                _ = note.scanContentTags()
+            }
+        }
+
+        vc.sidebarOutlineView.reloadSidebar()
+    }
+
+    @IBAction func highlightIndentedCodeBlocks(_ sender: NSButton) {
+        UserDefaultsManagement.indentedCodeBlockHighlighting = (sender.state == NSControl.StateValue.on)
+
+        guard let vc = ViewController.shared() else { return }
+        vc.refillEditArea()
     }
 }

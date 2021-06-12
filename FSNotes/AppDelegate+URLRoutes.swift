@@ -31,10 +31,22 @@ extension AppDelegate {
     }
     
     func application(_ application: NSApplication, open urls: [URL]) {
-        guard let url = urls.first,
+        guard var url = urls.first,
             let scheme = url.scheme
             else { return }
-        
+
+        if url.host == "open" {
+            if let tag = url["tag"]?.removingPercentEncoding {
+                ViewController.shared()?.sidebarOutlineView.select(tag: tag)
+                return
+            }
+        }
+
+        let path = url.absoluteString.escapePlus()
+        if let escaped = URL(string: path) {
+            url = escaped
+        }
+
         switch scheme {
         case HandledSchemes.file.rawValue:
             if nil != ViewController.shared() {
@@ -59,9 +71,9 @@ extension AppDelegate {
         var sidebarIndex: Int? = nil
 
         for url in urls {
-            if let items = vc.storageOutlineView.sidebarItems, let note = Storage.sharedInstance().getBy(url: url) {
-                if let sidebarItem = items.first(where: {$0.project == note.project || $0.project?.isArchive == note.isInArchive()}) {
-                    sidebarIndex = vc.storageOutlineView.row(forItem: sidebarItem)
+            if let items = vc.sidebarOutlineView.sidebarItems, let note = Storage.sharedInstance().getBy(url: url) {
+                if let sidebarItem = items.first(where: { ($0 as? SidebarItem)?.project == note.project || ($0 as? SidebarItem)?.project?.isArchive == note.isInArchive()}) {
+                    sidebarIndex = vc.sidebarOutlineView.row(forItem: sidebarItem)
                     importedNote = note
                 }
             } else {
@@ -74,7 +86,7 @@ extension AppDelegate {
         }
 
         if let note = importedNote, let si = sidebarIndex {
-            vc.storageOutlineView.selectRowIndexes([si], byExtendingSelection: false)
+            vc.sidebarOutlineView.selectRowIndexes([si], byExtendingSelection: false)
 
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: {
                 vc.notesTableView.setSelected(note: note)
@@ -99,21 +111,42 @@ extension AppDelegate {
     
     /// Handles URLs with the path /find/searchstring1%20searchstring2
     func RouteFSNotesFind(_ url: URL) {
-        let lastPath = url.lastPathComponent
-
-        guard nil != ViewController.shared() else {
-            self.searchQuery = lastPath
+        guard ViewController.shared() != nil else {
+            self.searchQuery = url
             return
         }
 
+        search(url: url)
+    }
+
+    public func search(url: URL) {
+        guard let vc = ViewController.shared() else { return }
+
+        var lastPath = url.lastPathComponent
+
+        if let wikiURL = url["id"] {
+            if let note = Storage.sharedInstance().getBy(title: wikiURL) {
+                vc.cleanSearchAndEditArea(shouldBecomeFirstResponder: false, completion: { () -> Void in
+                    vc.notesTableView.selectRowAndSidebarItem(note: note)
+                    NSApp.mainWindow?.makeFirstResponder(vc.editArea)
+                    vc.notesTableView.saveNavigationHistory(note: note)
+                })
+                return
+            } else {
+                lastPath = wikiURL
+            }
+        }
+
         search(query: lastPath)
+
+        vc.search.becomeFirstResponder()
     }
 
     func search(query: String) {
         guard let controller = ViewController.shared() else { return }
 
         controller.search.stringValue = query
-        controller.updateTable(search: true) {
+        controller.updateTable(search: true, searchText: query, saveHistory: true) {
             if let note = controller.notesTableView.noteList.first {
                 DispatchQueue.main.async {
                     controller.search.suggestAutocomplete(note, filter: query)

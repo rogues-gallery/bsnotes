@@ -106,4 +106,46 @@ extension UIImage {
     public var jpgData: Data? {
         return self.jpegData(compressionQuality: 1)
     }
+
+    public static func emptyImage(with size: CGSize) -> UIImage? {
+        let renderer = UIGraphicsImageRenderer(size: size)
+        let img = renderer.image { ctx in
+            if #available(iOS 11.0, *), let border = UIColor(named: "pictureBorder") {
+                ctx.cgContext.setStrokeColor(border.cgColor)
+                ctx.cgContext.setLineWidth(1)
+
+                let rectangle = CGRect(x: 0, y: 0, width: size.width, height: size.height)
+                ctx.cgContext.addRect(rectangle)
+                ctx.cgContext.drawPath(using: .stroke)
+            }
+        }
+        return img
+    }
+
+    public func rounded(radius: CGFloat) -> UIImage {
+        let rect = CGRect(origin: .zero, size: size)
+        UIGraphicsBeginImageContextWithOptions(size, false, 0)
+        UIBezierPath(roundedRect: rect, cornerRadius: radius).addClip()
+        draw(in: rect)
+        return UIGraphicsGetImageFromCurrentImageContext()!
+    }
+
+    func imageWithColor(color1: UIColor) -> UIImage {
+        UIGraphicsBeginImageContextWithOptions(self.size, false, self.scale)
+        color1.setFill()
+
+        let context = UIGraphicsGetCurrentContext()
+        context?.translateBy(x: 0, y: self.size.height)
+        context?.scaleBy(x: 1.0, y: -1.0)
+        context?.setBlendMode(CGBlendMode.normal)
+
+        let rect = CGRect(origin: .zero, size: CGSize(width: self.size.width, height: self.size.height))
+        context?.clip(to: rect, mask: self.cgImage!)
+        context?.fill(rect)
+
+        let newImage = UIGraphicsGetImageFromCurrentImageContext()
+        UIGraphicsEndImageContext()
+
+        return newImage!
+    }
 }

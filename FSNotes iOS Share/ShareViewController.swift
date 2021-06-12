@@ -26,8 +26,18 @@ class ShareViewController: SLComposeServiceViewController {
     public let appendItem = SLComposeSheetConfigurationItem()
 
     override func viewDidLoad() {
+        super.viewDidLoad()
+
+        if #available(iOS 13.0, *) {
+            _ = NotificationCenter.default.addObserver(forName: UIResponder.keyboardDidShowNotification, object: nil, queue: .main) { (_) in
+                if let layoutContainerView = self.view.subviews.last {
+                    layoutContainerView.frame.size.height += 45
+                }
+            }
+        }
+        
         preferredContentSize = CGSize(width: 300, height: 300)
-        navigationController!.navigationBar.topItem!.rightBarButtonItem!.title = "New note"
+        navigationController!.navigationBar.topItem!.rightBarButtonItem!.title = NSLocalizedString("New note", comment: "")
         navigationController?.navigationBar.backgroundColor = Colors.Header.normalResource
         navigationController?.navigationBar.tintColor = UIColor.white
         navigationController?.navigationBar.barTintColor = UIColor.white
@@ -74,6 +84,8 @@ class ShareViewController: SLComposeServiceViewController {
                     for attachRow in attach {
                         if attachRow.hasItemConformingToTypeIdentifier(kUTTypeImage as String) || attachRow.hasItemConformingToTypeIdentifier(kUTTypeJPEG as String){
                             imagesFound = true
+
+                            textView.text = ""
                             return super.loadPreviewView()
                         }
 
@@ -108,25 +120,36 @@ class ShareViewController: SLComposeServiceViewController {
 
     override func configurationItems() -> [Any]! {
         let storage = Storage.sharedInstance()
-        let urls = UserDefaultsManagement.projects
-        storage.loadProjects(from: urls)
+        var urls = [URL]()
 
-        projectItem?.title = "Project"
-        projectItem?.tapHandler = {
-            let projects = storage.getProjects()
-            let controller = ProjectListController()
-            controller.delegate = self
-            controller.setProjects(projects: projects)
-            self.pushConfigurationViewController(controller)
-
+        if let inbox = UserDefaultsManagement.storageUrl {
+            urls.append(inbox)
         }
 
-        appendItem?.title = "Append to"
+        if let archive = UserDefaultsManagement.archiveDirectory {
+            urls.append(archive)
+        }
+
+        urls.append(contentsOf: UserDefaultsManagement.projects)
+        storage.loadProjects(from: urls)
+
+        projectItem?.title = NSLocalizedString("Project", comment: "")
+        projectItem?.tapHandler = {
+            let controller = ProjectListController()
+            controller.delegate = self
+
+            let projects = storage.getProjects()
+            controller.setProjects(projects: projects)
+
+            self.pushConfigurationViewController(controller)
+        }
+
+        appendItem?.title = NSLocalizedString("Append to", comment: "")
 
         DispatchQueue.global().async {
-            let element = UserDefaultsManagement.lastProject
-
-            if let project = storage.getProjectBy(element: element) {
+            if let projectURL = UserDefaultsManagement.lastSelectedURL,
+                let project = storage.getProjectBy(url: projectURL)
+            {
                 self.currentProject = project
                 self.loadNotesFrom(project: project)
             }
@@ -136,8 +159,8 @@ class ShareViewController: SLComposeServiceViewController {
             }
 
             if let note = self.notes?.first {
-                note.load(tags: false)
-                _ = note.getImagePreviewUrl()
+                note.load()
+                note.loadPreviewInfo()
 
                 DispatchQueue.main.async {
                     self.appendItem?.value = note.getName()
@@ -149,7 +172,7 @@ class ShareViewController: SLComposeServiceViewController {
         }
 
         guard let select = SLComposeSheetConfigurationItem() else { return [] }
-        select.title = "Choose for append"
+        select.title = NSLocalizedString("Choose for append", comment: "")
         select.tapHandler = {
             if let notes = self.notes {
                 let controller = NotesListController()
@@ -167,6 +190,8 @@ class ShareViewController: SLComposeServiceViewController {
             let input = context.inputItems as? [NSExtensionItem] else { return }
 
         let note = note ?? Note(project: self.currentProject)
+        Storage.sharedInstance().add(note)
+
         var started = 0
         var finished = 0
 
@@ -204,7 +229,10 @@ class ShareViewController: SLComposeServiceViewController {
 
                             finished = finished + 1
                             if started == finished {
-                                note.append(string: NSMutableAttributedString(string: "\n\n" + self.textView.text))
+                                if self.textView.text.count > 0 {
+                                    note.append(string: NSMutableAttributedString(string: "\n\n" + self.textView.text))
+                                }
+                                
                                 note.write()
                                 self.close()
                                 return
@@ -254,7 +282,7 @@ class ShareViewController: SLComposeServiceViewController {
             DispatchQueue.main.async {
                 if let note = notes.first {
                     note.load()
-                    _ = note.getImagePreviewUrl()
+                    note.loadPreviewInfo()
                     self.appendItem?.value = note.title
                 }
             }
@@ -269,13 +297,9 @@ class ShareViewController: SLComposeServiceViewController {
                 if let metaSet = doc.head?.css("meta") {
                     for meta in metaSet {
                         if let property = meta["property"]?.lowercased {
-                            if property().hasPrefix("og:image"), let imagePath = meta["content"] as? String {
+                            if property().hasPrefix("og:image"), let imagePath = meta["content"] {
 
                                 if let imURL = URL(string: imagePath), let instaData = try? Data(contentsOf: imURL) {
-
-                                    print(imURL)
-                                    print(instaData)
-
                                     self.instagram = instaData
 
                                     DispatchQueue.main.async {

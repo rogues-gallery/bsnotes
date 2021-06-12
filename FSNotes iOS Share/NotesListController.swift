@@ -9,11 +9,11 @@
 import UIKit
 
 class NotesListController: UITableViewController {
-    public var delegate: ShareViewController?
+    public weak var delegate: ShareViewController?
     private var notes = [Note]()
 
     override func viewDidLoad() {
-        title = "Append to"
+        title = NSLocalizedString("Append to", comment: "")
     }
 
     public func setNotes(notes: [Note]) {
@@ -32,8 +32,7 @@ class NotesListController: UITableViewController {
         let cell = UITableViewCell.init(style: .subtitle, reuseIdentifier: nil)
         let note = self.notes[indexPath.row]
 
-        note.load(tags: false)
-        _ = note.getImagePreviewUrl()
+        note.load()
         let title = note.title
 
         cell.textLabel?.text = title
@@ -44,7 +43,7 @@ class NotesListController: UITableViewController {
 
     override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         let note = self.notes[indexPath.row]
-        note.load(tags: false)
+        note.load()
         delegate?.save(note: note)
     }
 }

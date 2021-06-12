@@ -11,8 +11,8 @@ import Foundation
 class SandboxBookmark {
     static var instance: SandboxBookmark? = nil
 
-    private let bookmarksKey = "SecurityBookmarks"
-    private var defaults = UserDefaults.init(suiteName: "group.fsnotes-manager")
+    private let bookmarksKey = "SecurityBookmarksKey"
+    private var defaults = UserDefaults.init(suiteName: "group.es.fsnot.user.defaults")
     private var bookmarks = [URL: Data]()
 
     public static func sharedInstance() -> SandboxBookmark {
@@ -29,11 +29,13 @@ class SandboxBookmark {
             for bookmarkData in bookmarks {
                 do {
                     var isStale = false
-                    let url = try URL(resolvingBookmarkData: bookmarkData, bookmarkDataIsStale: &isStale).resolvingSymlinksInPath()
+                    let url = try URL(resolvingBookmarkData: bookmarkData, bookmarkDataIsStale: &isStale)
 
                     if !isStale {
-                        self.bookmarks[url] = bookmarkData
-                        print("URL loaded from security scope: \(url)")
+                        if url.startAccessingSecurityScopedResource() {
+                            self.bookmarks[url.standardized] = bookmarkData
+                            print("URL loaded from security scope: \(url)")
+                        }
                     } else {
                         remove(url: url)
                     }
@@ -60,15 +62,17 @@ class SandboxBookmark {
 
     public func save(data: [Data]) {
         defaults?.set(data, forKey: bookmarksKey)
+        defaults?.synchronize()
     }
 
     public func remove(url: URL) {
         self.bookmarks.removeValue(forKey: url)
 
-        print(url)
-        print(url.resolvingSymlinksInPath())
-
-        print(self.bookmarks)
+        // old style bookmarks
+        let oldStylePath = "/private" + url.path
+        if let index = bookmarks.firstIndex(where: { $0.key.path == oldStylePath }) {
+            bookmarks.remove(at: index)
+        }
 
         let values = bookmarks.map({ $0.value })
         save(data: values)
