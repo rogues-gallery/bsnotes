@@ -225,15 +225,7 @@ class NotesTableView: UITableView,
         pinAction.image = note.isPinned ? UIImage(systemName: "pin.slash") : UIImage(systemName: "pin")
         pinAction.backgroundColor = UIColor(red: 0.24, green: 0.59, blue: 0.94, alpha: 1.0)
 
-        // More
-        let moreAction = UIContextualAction(style: .normal, title: NSLocalizedString("More", comment: "Table row action")) { [weak self] _, _, completion in
-            self?.actionsSheet(notes: [note], showAll: true, presentController: vc)
-            completion(true)
-        }
-        moreAction.image = UIImage(systemName: "ellipsis.circle")
-        moreAction.backgroundColor = UIColor(red: 0.13, green: 0.69, blue: 0.58, alpha: 1.0)
-
-        let config = UISwipeActionsConfiguration(actions: [deleteAction, pinAction, moreAction])
+        let config = UISwipeActionsConfiguration(actions: [deleteAction, pinAction])
         config.performsFirstActionWithFullSwipe = true
         return config
     }
@@ -348,7 +340,7 @@ class NotesTableView: UITableView,
         actions.append(UIAction(title: duplicateTitle, image: duplicateImage, identifier: UIAction.Identifier("duplicate"), handler: handler))
 
         let moveTitle = NSLocalizedString("Move", comment: "")
-        let moveImage = UIImage(systemName: "move.3d")
+        let moveImage = UIImage(systemName: "folder")
         actions.append(UIAction(title: moveTitle, image: moveImage, identifier: UIAction.Identifier("move"), handler: handler))
 
 

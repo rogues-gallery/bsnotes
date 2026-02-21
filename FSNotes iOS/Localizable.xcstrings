@@ -5904,6 +5904,7 @@
     },
     "More" : {
       "comment" : "Table row action",
+      "extractionState" : "stale",
       "localizations" : {
         "cs" : {
           "stringUnit" : {

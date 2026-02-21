@@ -68,8 +68,10 @@ class MoveViewController: UITableViewController {
                 }
             }
             
-            self.notesTableView.viewDelegate?.updateNotesCounter()
+            UIApplication.getVC().updateNotesCounter()
         }
+        
+        UIApplication.getEVC().updateTitle()
 
         self.dismiss(animated: true, completion: nil)
     }

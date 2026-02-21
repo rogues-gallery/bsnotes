@@ -247,6 +247,7 @@ class ViewController: UIViewController, UISearchBarDelegate, UIGestureRecognizer
         notesTable.layer.zPosition = 100
         notesTable.rowHeight = UITableView.automaticDimension
         notesTable.estimatedRowHeight = 160
+        notesTable.tableHeaderView = UIView(frame: CGRect(x: 0, y: 0, width: 0, height: CGFloat.leastNormalMagnitude))
     }
 
     public var lastSidebarItem: SidebarItem? = nil
@@ -276,6 +277,10 @@ class ViewController: UIViewController, UISearchBarDelegate, UIGestureRecognizer
         }
 
         navigationItem.title = folder
+        
+        if #available(iOS 26.0, *) {
+            navigationItem.subtitle = qty
+        }
     }
 
     public func configureNotifications() {
@@ -312,11 +317,6 @@ class ViewController: UIViewController, UISearchBarDelegate, UIGestureRecognizer
         let longTapOnSidebar = UILongPressGestureRecognizer(target: self, action: #selector(sidebarLongPress))
         longTapOnSidebar.minimumPressDuration = 0.5
         view.addGestureRecognizer(longTapOnSidebar)
-
-        let longTapOnNotes = UILongPressGestureRecognizer(target: self, action: #selector(notesLongPress))
-        longTapOnNotes.minimumPressDuration = 0.5
-        notesTable.addGestureRecognizer(longTapOnNotes)
-        notesTable.dragInteractionEnabled = UserDefaultsManagement.sidebarIsOpened
     }
 
     public func configureSearchController() {
@@ -418,22 +418,6 @@ class ViewController: UIViewController, UISearchBarDelegate, UIGestureRecognizer
         } else {
             showSidebar()
         }
-    }
-
-    @IBAction public func notesLongPress(gesture: UILongPressGestureRecognizer) {
-        guard !UserDefaultsManagement.sidebarIsOpened else { return }
-
-        let p = gesture.location(in: self.notesTable)
-
-        if let indexPath = notesTable.indexPathForRow(at: p) {
-            let note = notesTable.notes[indexPath.row]
-
-            if gesture.state == .began {
-                notesTable.actionsSheet(notes: [note], showAll: true, presentController: self)
-            }
-        }
-
-        gesture.state = .ended
     }
 
     @IBAction public func sidebarLongPress(gesture: UILongPressGestureRecognizer) {
