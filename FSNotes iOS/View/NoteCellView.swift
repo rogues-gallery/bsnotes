@@ -65,6 +65,7 @@ class NoteCellView: SwipeTableViewCell {
             pin.isHidden = false
         } else if note.isEncrypted() {
             let name = note.isUnlocked() ? "lock.open" : "lock"
+            pin.contentMode = .scaleAspectFit
             pin.image = UIImage(systemName: name)
             pin.isHidden = false
         } else {

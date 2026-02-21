@@ -519,9 +519,6 @@ class CloudDriveManager {
             self.delegate.notesTable.removeRows(notes: delete)
             self.delegate.notesTable.insertRows(notes: insert)
             self.delegate.notesTable.reloadRows(notes: change)
-
-            print("count PD: \(projectsDeletion.count)")
-            print("count PI: \(projectsInsertion.count)")
             
             self.delegate.sidebarTableView.removeRows(projects: projectsDeletion)
             self.delegate.sidebarTableView.insertRows(projects: projectsInsertion)

@@ -15,9 +15,8 @@ import SSZipArchive
 class NotesTableView: UITableView,
     UITableViewDelegate,
     UITableViewDataSource,
-    UITableViewDragDelegate,
-    SwipeTableViewCellDelegate {
-
+    UITableViewDragDelegate {
+    
     var notes = [Note]()
     var viewDelegate: ViewController? = nil
     public var selectedIndexPaths: [IndexPath]?
@@ -74,7 +73,6 @@ class NotesTableView: UITableView,
         let cell = tableView.dequeueReusableCell(withIdentifier: "noteCell", for: indexPath) as! NoteCellView
 
         cell.imageKeys = []
-        cell.delegate = self
 
         guard self.notes.indices.contains(indexPath.row) else { return cell }
 
@@ -178,66 +176,66 @@ class NotesTableView: UITableView,
         return true
     }
 
-    func tableView(_ tableView: UITableView, editActionsOptionsForRowAt indexPath: IndexPath, for orientation: SwipeActionsOrientation) -> SwipeOptions {
-        var options = SwipeOptions()
-        options.transitionStyle = .border
-        options.expansionStyle = .selection
-        return options
-    }
-
-    func tableView(_ tableView: UITableView, editActionsForRowAt indexPath: IndexPath, for orientation: SwipeActionsOrientation) -> [SwipeAction]? {
+    func tableView(_ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
         guard let vc = viewDelegate,
-            !UserDefaultsManagement.sidebarIsOpened,
-            orientation == .right
+              !UserDefaultsManagement.sidebarIsOpened
         else { return nil }
 
         let note = self.notes[indexPath.row]
 
-        let deleteTitle = NSLocalizedString("Delete", comment: "Table row action")
-        let deleteAction = SwipeAction(style: .destructive, title: deleteTitle) { action, indexPath in
+        // Delete
+        let deleteAction = UIContextualAction(style: .destructive, title: NSLocalizedString("Delete", comment: "Table row action")) { [weak self] _, _, completion in
+            guard let self = self else { return }
             self.viewDelegate?.sidebarTableView.removeTags(in: [note])
             let isTrashed = note.isTrash()
-
             note.remove()
             self.removeRows(notes: [note])
-
             if note.isEmpty() || isTrashed {
                 vc.storage.removeBy(note: note)
             }
+            completion(true)
         }
         deleteAction.image = UIImage(systemName: "trash")
 
+        // Pin / Unpin
         let pinTitle = note.isPinned
             ? NSLocalizedString("Unpin", comment: "Table row action")
             : NSLocalizedString("Pin", comment: "Table row action")
-
-        let pinAction = SwipeAction(style: .default, title: pinTitle) { action, indexPath in
-            guard let cell = self.cellForRow(at: indexPath) as? NoteCellView else { return }
-
+        let pinAction = UIContextualAction(style: .normal, title: pinTitle) { [weak self] _, _, completion in
+            guard let self = self,
+                  let cell = self.cellForRow(at: indexPath) as? NoteCellView else {
+                completion(false)
+                return
+            }
             note.togglePin()
             cell.configure(note: note)
-            
-            let resorted = vc.storage.sortNotes(noteList: self.notes)
-            guard let newIndex = resorted.firstIndex(of: note) else { return }
 
+            let resorted = vc.storage.sortNotes(noteList: self.notes)
+            guard let newIndex = resorted.firstIndex(of: note) else {
+                completion(false)
+                return
+            }
             let newIndexPath = IndexPath(row: newIndex, section: 0)
             self.moveRow(at: indexPath, to: newIndexPath)
             self.notes = resorted
-
             self.reloadRows(at: [newIndexPath], with: .automatic)
             self.reloadRows(at: [indexPath], with: .automatic)
+            completion(true)
         }
         pinAction.image = note.isPinned ? UIImage(systemName: "pin.slash") : UIImage(systemName: "pin")
-        pinAction.backgroundColor = UIColor(red:0.24, green:0.59, blue:0.94, alpha:1.0)
+        pinAction.backgroundColor = UIColor(red: 0.24, green: 0.59, blue: 0.94, alpha: 1.0)
 
-        let moreTitle = NSLocalizedString("More", comment: "Table row action")
-        let moreAction = SwipeAction(style: .default, title: moreTitle) { action, indexPath in
-            self.actionsSheet(notes: [note], showAll: true, presentController: self.viewDelegate!)
+        // More
+        let moreAction = UIContextualAction(style: .normal, title: NSLocalizedString("More", comment: "Table row action")) { [weak self] _, _, completion in
+            self?.actionsSheet(notes: [note], showAll: true, presentController: vc)
+            completion(true)
         }
         moreAction.image = UIImage(systemName: "ellipsis.circle")
-        moreAction.backgroundColor = UIColor(red:0.13, green:0.69, blue:0.58, alpha:1.0)
+        moreAction.backgroundColor = UIColor(red: 0.13, green: 0.69, blue: 0.58, alpha: 1.0)
 
-        return [deleteAction, pinAction, moreAction]
+        let config = UISwipeActionsConfiguration(actions: [deleteAction, pinAction, moreAction])
+        config.performsFirstActionWithFullSwipe = true
+        return config
     }
 
     public func turnOffEditing() {
