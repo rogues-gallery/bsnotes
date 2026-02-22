@@ -169,6 +169,8 @@ class ViewController: UIViewController, UISearchBarDelegate, UIGestureRecognizer
         super.viewDidLoad()
         
         configureToolbar()
+
+        isLandscape = UIDevice.current.orientation.isLandscape
     }
 
     @objc public func didBecomeActive() {
@@ -642,9 +644,11 @@ class ViewController: UIViewController, UISearchBarDelegate, UIGestureRecognizer
     }
 
     public func getLeftInset() -> CGFloat {
-        let left = UIApplication.shared.windows.first?.safeAreaInsets.left ?? 0
-
-        return left
+        return view.safeAreaInsets.left
+    }
+    
+    public func getRightInset() -> CGFloat {
+        return view.safeAreaInsets.right
     }
 
     public func loadNotches() {
@@ -1097,6 +1101,7 @@ class ViewController: UIViewController, UISearchBarDelegate, UIGestureRecognizer
 
             DispatchQueue.main.async {
                 self.loadNews()
+                self.resizeSidebar(withAnimation: true)
             }
         }
     }
@@ -1105,13 +1110,16 @@ class ViewController: UIViewController, UISearchBarDelegate, UIGestureRecognizer
         importSavedInSharedExtension()
     }
 
+    private var swipeStartLeadingConstant: CGFloat = 0
+
     @objc func handleSidebarSwipe(_ swipe: UIPanGestureRecognizer) {
         let notchWidth = getLeftInset()
         let translation = swipe.translation(in: notesTable)
 
         if swipe.state == .began {
+            maxSidebarWidth = calculateLabelMaxWidth()
             sidebarTableView.isUserInteractionEnabled = true
-            
+
             if !UserDefaultsManagement.sidebarIsOpened {
                 self.sidebarTableLeadingConstraint.constant = -self.maxSidebarWidth
                 self.sidebarTableWidth.constant = self.maxSidebarWidth
@@ -1119,30 +1127,31 @@ class ViewController: UIViewController, UISearchBarDelegate, UIGestureRecognizer
                 leftPreSafeArea.backgroundColor = UIColor.sidebar
                 notesTable.dragInteractionEnabled = false
                 sidebarTableView.isUserInteractionEnabled = false
+                swipeStartLeadingConstant = 0
             } else {
+                let correctLeading = self.maxSidebarWidth + notchWidth
                 self.sidebarTableLeadingConstraint.constant = 0
-                self.notesTableLeadingConstraint.constant = self.maxSidebarWidth
+                self.sidebarTableWidth.constant = self.maxSidebarWidth
+                self.notesTableLeadingConstraint.constant = correctLeading
                 notesTable.dragInteractionEnabled = true
                 sidebarTableView.isUserInteractionEnabled = true
+                swipeStartLeadingConstant = correctLeading
             }
-            
+
             return
         }
 
         if swipe.state == .changed {
-            guard
-                UserDefaultsManagement.sidebarIsOpened && translation.x + notchWidth < 0 && (translation.x + notchWidth + maxSidebarWidth) > 0
-                || !UserDefaultsManagement.sidebarIsOpened && translation.x + notchWidth > 0 && translation.x + notchWidth < maxSidebarWidth
-            else { return }
+            let newLeading = swipeStartLeadingConstant + translation.x
+            let sidebarRange = maxSidebarWidth + notchWidth
+
+            guard newLeading >= 0 && newLeading <= sidebarRange else { return }
 
             UIView.animate(withDuration: 0.075, delay: 0.0, options: .beginFromCurrentState, animations: {
-                if translation.x + notchWidth > 0 {
-                    self.notesTableLeadingConstraint.constant = translation.x
-                    self.sidebarTableLeadingConstraint.constant = -self.maxSidebarWidth/2 + translation.x/2
-                } else {
-                    self.notesTableLeadingConstraint.constant = self.maxSidebarWidth + translation.x
-                    self.sidebarTableLeadingConstraint.constant = translation.x/2
-                }
+                self.notesTableLeadingConstraint.constant = newLeading
+                let sidebarOffset = max(0, newLeading - notchWidth)
+                let sidebarProgress = min(sidebarOffset, self.maxSidebarWidth) / self.maxSidebarWidth
+                self.sidebarTableLeadingConstraint.constant = -self.maxSidebarWidth * (1 - sidebarProgress)
                 self.view.layoutIfNeeded()
             })
             return
@@ -1152,7 +1161,6 @@ class ViewController: UIViewController, UISearchBarDelegate, UIGestureRecognizer
             if translation.x > 0 {
                 showSidebar()
             }
-
             if translation.x < 0 {
                 hideSidebar()
             }
@@ -1162,7 +1170,7 @@ class ViewController: UIViewController, UISearchBarDelegate, UIGestureRecognizer
     private func initSidebar() {
         if UserDefaultsManagement.sidebarIsOpened {
             self.sidebarTableLeadingConstraint.constant = 0
-            self.notesTableLeadingConstraint.constant = self.maxSidebarWidth
+            self.notesTableLeadingConstraint.constant = self.maxSidebarWidth + getLeftInset()
 
             self.notesTable.dragInteractionEnabled = true
             self.sidebarTableView.isUserInteractionEnabled = true
@@ -1180,8 +1188,9 @@ class ViewController: UIViewController, UISearchBarDelegate, UIGestureRecognizer
     }
 
     private func showSidebar() {
+        let leftInset = getLeftInset()
         UIView.animate(withDuration: 0.2, delay: 0.0, options: .init(), animations: {
-            self.notesTableLeadingConstraint.constant = self.maxSidebarWidth
+            self.notesTableLeadingConstraint.constant = self.maxSidebarWidth + leftInset
             self.sidebarTableLeadingConstraint.constant = 0
             self.sidebarTableWidth.constant = self.maxSidebarWidth
             self.view.layoutIfNeeded()
@@ -1438,6 +1447,7 @@ class ViewController: UIViewController, UISearchBarDelegate, UIGestureRecognizer
     }
 
     public func resizeSidebar(withAnimation: Bool = false) {
+        let leftInset = getLeftInset()
         let width = calculateLabelMaxWidth()
         maxSidebarWidth = width
 
@@ -1450,15 +1460,15 @@ class ViewController: UIViewController, UISearchBarDelegate, UIGestureRecognizer
         if (withAnimation) {
             UIView.animate(withDuration: 0.3, delay: 0, options: .beginFromCurrentState, animations: {
                 let width = self.maxSidebarWidth
-                self.notesTableLeadingConstraint.constant = width
+                self.notesTableLeadingConstraint.constant = width + leftInset
                 self.sidebarTableLeadingConstraint.constant = 0
                 self.sidebarTableWidth.constant = width
             }) { _ in
 
             }
         } else {
-            notesTableLeadingConstraint.constant = maxSidebarWidth
-            sidebarTableWidth.constant = notesTableLeadingConstraint.constant
+            notesTableLeadingConstraint.constant = maxSidebarWidth + leftInset
+            sidebarTableWidth.constant = maxSidebarWidth
         }
     }
 
