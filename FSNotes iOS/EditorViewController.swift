@@ -43,6 +43,7 @@ class EditorViewController: UIViewController,
     private let dropDown = DropDown()
 
     private var isLandscape: Bool?
+    private var lastStyle: UIUserInterfaceStyle?
     
     // Search toolbar
     var keyboardAnchor: UITextField?
@@ -87,12 +88,16 @@ class EditorViewController: UIViewController,
 
         self.addToolBar(textField: editArea, toolbar: self.getMarkdownToolbar())
 
+        NotificationCenter.default.addObserver(self, selector: #selector(themeObserver), name: UIApplication.didBecomeActiveNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(preferredContentSizeChanged), name: UIContentSizeCategory.didChangeNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(rotated), name: UIDevice.orientationDidChangeNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(refill), name: NSNotification.Name(rawValue: "es.fsnot.external.file.changed"), object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(keyboardWillChangeFrame), name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
 
         editArea.keyboardDismissMode = .interactive
+        
+        registerForKeyboardNotifications()
+        registerForAppStateNotifications()
     }
 
     @objc func rotated() {
@@ -118,8 +123,6 @@ class EditorViewController: UIViewController,
 
         initLinksColor()
         editArea.flashScrollIndicators()
-
-        self.registerForKeyboardNotifications()
 
         initSwipes()
     }
@@ -180,10 +183,29 @@ class EditorViewController: UIViewController,
         navigationItem.title = note?.project.label
     }
 
-    private func registerForKeyboardNotifications(){
+    private func registerForKeyboardNotifications() {
         NotificationCenter.default.addObserver(self, selector: #selector(keyboardWillShow), name: UIResponder.keyboardWillShowNotification, object: nil)
-
         NotificationCenter.default.addObserver(self, selector: #selector(keyboardWillHide), name: UIResponder.keyboardWillHideNotification, object: nil)
+    }
+
+    private func unregisterFromKeyboardNotifications() {
+        NotificationCenter.default.removeObserver(self, name: UIResponder.keyboardWillShowNotification, object: nil)
+        NotificationCenter.default.removeObserver(self, name: UIResponder.keyboardWillHideNotification, object: nil)
+    }
+
+    private func registerForAppStateNotifications() {
+        NotificationCenter.default.addObserver(self, selector: #selector(appDidEnterBackground), name: UIApplication.didEnterBackgroundNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(appWillEnterForeground), name: UIApplication.willEnterForegroundNotification, object: nil)
+    }
+
+    @objc private func appDidEnterBackground() {
+        unregisterFromKeyboardNotifications()
+    }
+
+    @objc private func appWillEnterForeground() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            self.registerForKeyboardNotifications()
+        }
     }
 
     public func configureNavMenu() {
@@ -681,21 +703,18 @@ class EditorViewController: UIViewController,
         
         guard let userInfo = notification.userInfo else { return }
         guard var keyboardFrame: CGRect = (userInfo[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue else { return }
-
         keyboardFrame = view.convert(keyboardFrame, from: nil)
+        
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.alignment = .left
+        paragraphStyle.lineSpacing = CGFloat(UserDefaultsManagement.editorLineSpacing)
+        self.editArea.typingAttributes[.paragraphStyle] = paragraphStyle
+        self.editArea.typingAttributes.removeValue(forKey: .link)
+
         let keyboardHeight = keyboardFrame.height
-
-        DispatchQueue.main.asyncAfter(deadline: .now()) {
-            let paragraphStyle = NSMutableParagraphStyle()
-            paragraphStyle.alignment = .left
-            paragraphStyle.lineSpacing = CGFloat(UserDefaultsManagement.editorLineSpacing)
-            self.editArea.typingAttributes[.paragraphStyle] = paragraphStyle
-            self.editArea.typingAttributes.removeValue(forKey: .link)
-
-            let contentInsets = UIEdgeInsets(top: 0.0, left: 0.0, bottom: keyboardHeight - 66, right: 0.0)
-            self.editArea.contentInset = contentInsets
-            self.editArea.scrollIndicatorInsets = contentInsets
-        }
+        let contentInsets = UIEdgeInsets(top: 0.0, left: 0.0, bottom: keyboardHeight - 66, right: 0.0)
+        self.editArea.contentInset = contentInsets
+        self.editArea.scrollIndicatorInsets = contentInsets
     }
     
     @objc func keyboardWillHide(notification: NSNotification) {
@@ -1071,6 +1090,24 @@ class EditorViewController: UIViewController,
                 self.editArea.insertAttributedText(mutable)
             }
         }
+    }
+    
+    @objc func themeObserver() {
+        guard
+            UIApplication.shared.applicationState == .active,
+            let style = UIApplication.shared
+                .connectedScenes
+                .compactMap({ $0 as? UIWindowScene })
+                .first?
+                .traitCollection
+                .userInterfaceStyle
+        else { return }
+
+        guard style != lastStyle else { return }
+        lastStyle = style
+
+        NotesTextProcessor.hl = nil
+        UIApplication.getEVC().refill()
     }
 
     @objc func preferredContentSizeChanged() {

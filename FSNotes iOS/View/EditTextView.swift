@@ -322,13 +322,7 @@ class EditTextView: UITextView, UITextViewDelegate {
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
         super.traitCollectionDidChange(previousTraitCollection)
 
-        guard traitCollection.hasDifferentColorAppearance(
-            comparedTo: previousTraitCollection
-        ) else { return }
-
-        NotesTextProcessor.hl = nil
-        
-        UIApplication.getEVC().refill()
+        UIApplication.getEVC().themeObserver()
     }
 }
 
