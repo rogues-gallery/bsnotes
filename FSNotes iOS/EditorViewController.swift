@@ -130,10 +130,6 @@ class EditorViewController: UIViewController,
     override func viewWillAppear(_ animated: Bool) {
         updateTitle()
         
-        if #available(iOS 26.0, *) {
-            navigationItem.subtitle = note?.url.lastPathComponent
-        }
-        
         super.viewWillAppear(animated)
 
         configureNavMenu()
@@ -181,6 +177,10 @@ class EditorViewController: UIViewController,
     
     public func updateTitle() {
         navigationItem.title = note?.project.label
+        
+        if #available(iOS 26.0, *) {
+            navigationItem.subtitle = note?.url.lastPathComponent
+        }
     }
 
     private func registerForKeyboardNotifications() {
@@ -589,6 +589,8 @@ class EditorViewController: UIViewController,
 
         if let title = note.getAutoRenameTitle() {
             UIApplication.getVC().notesTable.rename(note: note, to: title)
+            
+            UIApplication.getEVC().updateTitle()
         }
     }
 
