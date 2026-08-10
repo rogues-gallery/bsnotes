@@ -64,7 +64,7 @@ extension EditTextView {
         
         newContent.saveData()
         if shouldChangeText(in: combinedRange, replacementString: newContent.string) {
-            insertText(newContent, replacementRange: combinedRange)
+            textStorage.replaceCharacters(in: combinedRange, with: newContent)
             didChangeText()
         }
         
