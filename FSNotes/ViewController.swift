@@ -31,6 +31,9 @@ class ViewController: EditorViewController,
     private var sidebarTimer = Timer()
     private var selectRowTimer = Timer()
 
+    private var isEditorStateLocked = false
+    private var restoreEditorFocusAfterWake = false
+
     private let searchQueue = OperationQueue()
     private let counterQueue = OperationQueue()
 
@@ -907,7 +910,22 @@ class ViewController: EditorViewController,
     }
 
     @objc func onWakeNote(note: NSNotification) {
-        refillEditArea()
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+
+            self.editor.invalidateLayout()
+            self.editor.needsDisplay = true
+
+            if self.restoreEditorFocusAfterWake {
+                self.editor.window?.makeFirstResponder(self.editor)
+            }
+
+            self.editor.loadSelectedRange()
+            self.restoreScrollPosition()
+
+            self.restoreEditorFocusAfterWake = false
+            self.isEditorStateLocked = false
+        }
     }
 
     @IBAction func noteUp(_ sender: NSMenuItem) {
@@ -1894,15 +1912,28 @@ class ViewController: EditorViewController,
     }
 
     @objc func onSleepNote(note: NSNotification) {
+        saveEditorStateBeforeSleep()
+
         if UserDefaultsManagement.lockOnSleep {
             lockAll(self)
         }
     }
 
     @objc func onScreenLocked(note: NSNotification) {
+        saveEditorStateBeforeSleep()
+
         if UserDefaultsManagement.lockOnScreenActivated{
             lockAll(self)
         }
+    }
+
+    private func saveEditorStateBeforeSleep() {
+        guard !isEditorStateLocked else { return }
+
+        restoreEditorFocusAfterWake = editor.window?.firstResponder === editor
+        editor.saveSelectedRange()
+        editor.isScrollPositionSaverLocked = true
+        isEditorStateLocked = true
     }
     
     @objc func onAccentColorChanged(note: NSNotification) {
@@ -1934,7 +1965,8 @@ class ViewController: EditorViewController,
     func textViewDidChangeSelection(_ notification: Notification) {
         guard let textView = notification.object as? NSTextView else { return }
 
-        if textView.window?.firstResponder == textView {
+        if !isEditorStateLocked,
+           textView.window?.firstResponder == textView {
             let range = editor.selectedRange()
             if let editor = self.editor, let note = editor.note {
                 self.updateCounters(note: note, charRange: range)
