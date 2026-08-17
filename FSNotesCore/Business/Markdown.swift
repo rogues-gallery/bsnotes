@@ -8,6 +8,41 @@
 
 import libcmark_gfm
 
+/// Replaces Markdown horizontal-rule lines without touching fenced code blocks.
+func replaceHorizontalRulesOutsideCodeBlocks(in markdown: String) -> String {
+    let lines = markdown.components(separatedBy: "\n")
+    var result: [String] = []
+    var fenceLength: Int?
+
+    for (index, line) in lines.enumerated() {
+        let leadingSpaces = line.prefix(while: { $0 == " " }).count
+        let content = String(line.dropFirst(min(leadingSpaces, 3)))
+        let characters = Array(content)
+
+        if let currentFenceLength = fenceLength {
+            if characters.first == "`",
+               characters.prefix(while: { $0 == "`" }).count >= currentFenceLength {
+                fenceLength = nil
+            }
+        } else if characters.first == "`" {
+            let length = characters.prefix(while: { $0 == "`" }).count
+            if length >= 3 {
+                fenceLength = length
+            }
+        }
+
+        // Keep the existing behavior for a standalone `---` line, including
+        // its requirement for a following newline, but only outside code.
+        if fenceLength == nil && line == "---" && index > 0 && index < lines.count - 1 {
+            result.append("<hr>")
+        } else {
+            result.append(line)
+        }
+    }
+
+    return result.joined(separator: "\n")
+}
+
 func renderMarkdownHTML(markdown: String) -> String? {
     let markdown = markdown.replacingOccurrences(of: "{{TOC}}", with: "<div id=\"toc\"></div>")
         

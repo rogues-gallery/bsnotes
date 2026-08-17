@@ -895,9 +895,9 @@ public class Note: NSObject  {
             let mutable = NotesTextProcessor.convertAppTags(in: self.content.unloadAttachments(), codeBlockRanges: codeBlockRangesCache)
         let content = NotesTextProcessor.convertAppLinks(in: mutable, codeBlockRanges: codeBlockRangesCache)
             let result = cleanMetaData(content: content.string)
-                .replacingOccurrences(of: "\n---\n", with: "\n<hr>\n")
-        
-            return result
+            let prettifiedContent = replaceHorizontalRulesOutsideCodeBlocks(in: result)
+
+            return prettifiedContent
         #else
             return cleanMetaData(content: self.content.string)
         #endif
