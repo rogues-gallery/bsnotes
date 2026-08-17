@@ -418,7 +418,6 @@ class NotesTableView: UITableView,
     }
 
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
-        viewDelegate?.navigationItem.hidesSearchBarWhenScrolling = false
         viewDelegate?.navigationItem.largeTitleDisplayMode = .automatic
     }
 
