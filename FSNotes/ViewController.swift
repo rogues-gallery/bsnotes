@@ -1464,6 +1464,7 @@ class ViewController: EditorViewController,
 
     public func buildSearchQuery() {
         let searchQuery = SearchQuery()
+        let filter = search.stringValue
 
         var projects = [Project]()
         var tags = [String]()
@@ -1508,10 +1509,10 @@ class ViewController: EditorViewController,
         }
 
         if projects.count == 0 && type == nil {
-            type = .All
+            let firstSidebarItem = sidebarOutlineView.sidebarItems?.first as? SidebarItem
+            type = firstSidebarItem?.type == .Inbox && filter.isEmpty ? .Inbox : .All
         }
 
-        let filter = search.stringValue
         searchQuery.projects = projects
         searchQuery.tags = tags
         searchQuery.setFilter(filter)
