@@ -1,62 +1,33 @@
 # FSNotes
 
-[简体中文](README_zh_CN.md)
-[繁體中文](README_zh_TW.md)
+[简体中文](README_zh_CN.md) · [繁體中文](README_zh_TW.md)
 
-FSNotes is modern notes manager for macOS and iOS.
+**Own your notes. Find them instantly.**
 
-## macOS app
+FSNotes is a fast, native notes app for macOS and iOS. It gives you a focused writing experience while keeping every note in portable Markdown or plain-text files—not a proprietary database.
+
+<img src="https://fsnot.es/img/fsnotes7/FSNotes7_macOS_Dark.webp?v=2" alt="FSNotes for macOS in Dark Mode" style="max-width:100%;">
+
+## Why choose FSNotes
+
+- **No lock-in.** Open and edit your notes with any compatible app, now or years from now.
+- **Fast at any scale.** Search and navigate smoothly across collections of 10,000+ notes.
+- **Built around your workflow.** Use multiple folders, external editors, iCloud Drive, Dropbox, and optional Git backups.
+- **More than basic Markdown.** Connect ideas with tags and `[[links]]`, protect private notes with AES-256 encryption, and render code, Mermaid diagrams, and MathJax.
+
+**Buy FSNotes and get regular updates through the App Store.**
 
 <a href="https://itunes.apple.com/app/fsnotes/id1277179284">
-	<img src="https://fsnot.es/img/badge-download-on-the-mac-app-store.svg" alt="">
+	<img src="https://fsnot.es/img/badge-download-on-the-mac-app-store.svg" alt="Buy FSNotes on the Mac App Store">
 </a>
-
-<img src="https://fsnot.es/img/fsnotes7/FSNotes7_macOS_Dark.webp?v=2" alt="macOS FSNotes" style="max-width:100%;">
-
-### Key features
-
-- **Markdown-first**. Also supports any plaintext files.
-- **Fast and lightweight**. Works smoothly with 10k+ files.
-- **Access anywhere**. Sync with iCloud Drive or Dropbox.
-- **Multi-folder** storage.
-- **Keyboard-centric**.  
-- **Syntax highlighting** within code blocks. Supports over 30 programming languages.
-- **In-line image** support.
-- Organize with **tags**.
-- **Cross-note links** using `[[double brackets]]`.
-- **Elastic two-pane view**.
-- **External editor** support (changes seamless live sync with UI).
-- **Pin** important notes.
-- **Quickly copy notes** to the clipboard.
-- **Dark mode**.
-- AES-256 **encryption**.
-- **Mermaid and MathJax** support.
-- Optional **Git versioning** and **backups**.
-
----
-
-## iOS app
-
 <a href="https://itunes.apple.com/app/fsnotes-manager/id1346501102">
-	<img src="https://fsnot.es/img/badge-download-on-the-app-store.svg" alt="">
+	<img src="https://fsnot.es/img/badge-download-on-the-app-store.svg" alt="Buy FSNotes on the App Store">
 </a>
 
-<img width="300" alt="FSNotes for iOS" src="https://fsnot.es/img/fsnotes7/FSNotes7_iOS.webp?v=2"> <img width="300" alt="FSNotes for iOS" src="https://fsnot.es/img/fsnotes7/FSNotes7_iOS_Dark.webp?v=2">
+## FSNotes for iPhone and iPad
 
-### Key features
+<img width="300" alt="FSNotes for iOS" src="https://fsnot.es/img/fsnotes7/FSNotes7_iOS.webp?v=2"> <img width="300" alt="FSNotes for iOS in Dark Mode" src="https://fsnot.es/img/fsnotes7/FSNotes7_iOS_Dark.webp?v=2">
 
-- **Sync via iCloud Drive**.
-- **3D Touch** and **configurable keyboard**.
-- **TextBundle** and **EncryptedTextBundle** containers.
-- **Pinned** notes kept in sync with the desktop app.
-- **Dynamic fonts**.
-- **Dark mode**.
-- **Sharing** extension.
-- **Encrypted note** support.
-- **Encrypted folders** support.
-- **Git** integration.
-- **Web Pages** Creation.
+## Open source
 
-## License
-
-FSNotes is written in **Swift 5** and is open source (MIT license).
+FSNotes is written in **Swift 5** and released under the MIT license. App Store purchases support its continued development.
