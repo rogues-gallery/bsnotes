@@ -24,7 +24,7 @@ FSNotes is a fast, native notes app for macOS and iOS. It gives you a focused wr
 	<img src="https://fsnot.es/img/badge-download-on-the-app-store.svg" alt="Buy FSNotes on the App Store">
 </a>
 
-## FSNotes for iPhone and iPad
+## FSNotes for iOS
 
 <img width="300" alt="FSNotes for iOS" src="https://fsnot.es/img/fsnotes7/FSNotes7_iOS.webp?v=2"> <img width="300" alt="FSNotes for iOS in Dark Mode" src="https://fsnot.es/img/fsnotes7/FSNotes7_iOS_Dark.webp?v=2">
 
