@@ -9,7 +9,7 @@
 
 import Foundation
 import RNCryptor
-import SSZipArchive
+import ZipArchive
 import LocalAuthentication
 
 public class Note: NSObject  {

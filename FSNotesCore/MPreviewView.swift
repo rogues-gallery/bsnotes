@@ -7,7 +7,7 @@
 //
 
 import WebKit
-import SSZipArchive
+import ZipArchive
 
 #if os(iOS)
 import MobileCoreServices

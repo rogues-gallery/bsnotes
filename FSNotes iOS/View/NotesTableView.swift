@@ -10,7 +10,7 @@ import UIKit
 import MobileCoreServices
 import AudioToolbox
 import SwipeCellKit
-import SSZipArchive
+import ZipArchive
 
 class NotesTableView: UITableView,
     UITableViewDelegate,

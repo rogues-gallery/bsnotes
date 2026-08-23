@@ -1,5 +1,5 @@
 {
-  "originHash" : "2d1aa1f63d518360e031de3fb441c9f901a838fdc4472b5c997db08bea05709c",
+  "originHash" : "a794e65706e224ceca8e2c0f73fa7cc9071e8237ffa77aab0ec280c9e4bf6a72",
   "pins" : [
     {
       "identity" : "bluesocket",
@@ -11,12 +11,38 @@
       }
     },
     {
+      "identity" : "dropdown",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/AssistoLab/DropDown.git",
+      "state" : {
+        "revision" : "2ab6f6ce19f0117d1a76ea043ef8f57722c65d16"
+      }
+    },
+    {
+      "identity" : "libcmark_gfm",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/glushchenko/libcmark_gfm",
+      "state" : {
+        "branch" : "master",
+        "revision" : "ff574996495573b179a7e27dd5b9a4605f0e9841"
+      }
+    },
+    {
       "identity" : "libssh2prebuild",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/glushchenko/Libssh2Prebuild.git",
       "state" : {
         "revision" : "024c2cf73e0b47deeea92a1176998f48f98ff4df",
         "version" : "1.11.0-OpenSSL-1-1-1u"
+      }
+    },
+    {
+      "identity" : "rncryptor",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/RNCryptor/RNCryptor.git",
+      "state" : {
+        "revision" : "5e3bbf44f08bf90049537cb8902d8f4fa911a79a",
+        "version" : "5.1.0"
       }
     },
     {
@@ -52,6 +78,32 @@
       "state" : {
         "revision" : "39774ef16a6d91dee6f666b940e00ea202710cf7",
         "version" : "0.0.3"
+      }
+    },
+    {
+      "identity" : "swipecellkit",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/glushchenko/SwipeCellKit.git",
+      "state" : {
+        "revision" : "b1e40f5f49503b64872b9d374e811598ecb2c51a"
+      }
+    },
+    {
+      "identity" : "tocropviewcontroller",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/TimOliver/TOCropViewController.git",
+      "state" : {
+        "revision" : "a634cb7cdfd580006e79a6e74e64417fe9e9783b",
+        "version" : "2.7.4"
+      }
+    },
+    {
+      "identity" : "ziparchive",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/ZipArchive/ZipArchive.git",
+      "state" : {
+        "revision" : "df35718ea19a94e015b91dc4881dee028ce4cdba",
+        "version" : "2.6.0"
       }
     }
   ],
