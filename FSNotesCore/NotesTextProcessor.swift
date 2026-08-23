@@ -8,7 +8,6 @@
 
 #if os(OSX)
     import Cocoa
-    import MASShortcut
 #else
     import UIKit
 #endif

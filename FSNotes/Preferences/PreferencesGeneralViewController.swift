@@ -7,7 +7,6 @@
 //
 
 import Cocoa
-import MASShortcut
 import CoreData
 
 class PreferencesGeneralViewController: NSViewController, NSTextFieldDelegate {
@@ -17,10 +16,10 @@ class PreferencesGeneralViewController: NSViewController, NSTextFieldDelegate {
     }
 
     @IBOutlet var externalEditorApp: NSTextField!
-    @IBOutlet var newNoteshortcutView: MASShortcutView!
-    @IBOutlet var searchNotesShortcut: MASShortcutView!
-    @IBOutlet var activateShortcut: MASShortcutView!
-    @IBOutlet weak var quickNote: MASShortcutView!
+    @IBOutlet var newNoteshortcutView: ShortcutRecorderView!
+    @IBOutlet var searchNotesShortcut: ShortcutRecorderView!
+    @IBOutlet var activateShortcut: ShortcutRecorderView!
+    @IBOutlet weak var quickNote: ShortcutRecorderView!
     @IBOutlet weak var defaultStoragePath: NSPathControl!
     @IBOutlet weak var searchFocusOnESC: NSButton!
     @IBOutlet weak var defaultExtension: NSPopUpButton!
@@ -170,7 +169,7 @@ class PreferencesGeneralViewController: NSViewController, NSTextFieldDelegate {
     func initShortcuts() {
         guard let vc = ViewController.shared() else { return }
 
-        let mas = MASShortcutMonitor.shared()
+        let monitor = GlobalShortcutMonitor.shared()
         
         newNoteshortcutView.shortcutValue = UserDefaultsManagement.newNoteShortcut
         searchNotesShortcut.shortcutValue = UserDefaultsManagement.searchNoteShortcut
@@ -184,18 +183,18 @@ class PreferencesGeneralViewController: NSViewController, NSTextFieldDelegate {
 
         newNoteshortcutView.shortcutValueChange = { (sender) in
             if ((self.newNoteshortcutView.shortcutValue) != nil) {
-                mas?.unregisterShortcut(UserDefaultsManagement.newNoteShortcut)
+                monitor.unregisterShortcut(UserDefaultsManagement.newNoteShortcut)
 
                 let keyCode = self.newNoteshortcutView.shortcutValue.keyCode
                 let modifierFlags = self.newNoteshortcutView.shortcutValue.modifierFlags
 
-                UserDefaultsManagement.newNoteShortcut = MASShortcut(keyCode: keyCode, modifierFlags: modifierFlags)
+                UserDefaultsManagement.newNoteShortcut = GlobalShortcut(keyCode: keyCode, modifierFlags: modifierFlags)
 
-                MASShortcutMonitor.shared().register(self.newNoteshortcutView.shortcutValue, withAction: {
+                GlobalShortcutMonitor.shared().register(self.newNoteshortcutView.shortcutValue, withAction: {
                     vc.makeNoteShortcut()
                 })
             } else {
-                mas?.unregisterShortcut(UserDefaultsManagement.newNoteShortcut)
+                monitor.unregisterShortcut(UserDefaultsManagement.newNoteShortcut)
 
                 UserDefaultsManagement.newNoteShortcut = nil
             }
@@ -203,33 +202,33 @@ class PreferencesGeneralViewController: NSViewController, NSTextFieldDelegate {
 
         searchNotesShortcut.shortcutValueChange = { (sender) in
             if ((self.searchNotesShortcut.shortcutValue) != nil) {
-                mas?.unregisterShortcut(UserDefaultsManagement.searchNoteShortcut)
+                monitor.unregisterShortcut(UserDefaultsManagement.searchNoteShortcut)
 
                 let keyCode = self.searchNotesShortcut.shortcutValue.keyCode
                 let modifierFlags = self.searchNotesShortcut.shortcutValue.modifierFlags
 
-                UserDefaultsManagement.searchNoteShortcut = MASShortcut(keyCode: keyCode, modifierFlags: modifierFlags)
+                UserDefaultsManagement.searchNoteShortcut = GlobalShortcut(keyCode: keyCode, modifierFlags: modifierFlags)
 
-                MASShortcutMonitor.shared().register(self.searchNotesShortcut.shortcutValue, withAction: {
+                GlobalShortcutMonitor.shared().register(self.searchNotesShortcut.shortcutValue, withAction: {
                     vc.searchShortcut()
                 })
             } else {
-                mas?.unregisterShortcut(UserDefaultsManagement.searchNoteShortcut)
+                monitor.unregisterShortcut(UserDefaultsManagement.searchNoteShortcut)
 
                 UserDefaultsManagement.searchNoteShortcut = nil
             }
         }
         
         quickNote.shortcutValueChange = { (sender) in
-            mas?.unregisterShortcut(UserDefaultsManagement.quickNoteShortcut)
+            monitor.unregisterShortcut(UserDefaultsManagement.quickNoteShortcut)
             
             if ((self.quickNote.shortcutValue) != nil) {
                 let keyCode = self.quickNote.shortcutValue.keyCode
                 let modifierFlags = self.quickNote.shortcutValue.modifierFlags
 
-                UserDefaultsManagement.quickNoteShortcut = MASShortcut(keyCode: keyCode, modifierFlags: modifierFlags)
+                UserDefaultsManagement.quickNoteShortcut = GlobalShortcut(keyCode: keyCode, modifierFlags: modifierFlags)
 
-                MASShortcutMonitor.shared().register(self.quickNote.shortcutValue, withAction: {
+                GlobalShortcutMonitor.shared().register(self.quickNote.shortcutValue, withAction: {
                     vc.quickNote(self)
                 })
             } else {
@@ -238,15 +237,15 @@ class PreferencesGeneralViewController: NSViewController, NSTextFieldDelegate {
         }
         
         activateShortcut.shortcutValueChange = { (sender) in
-            mas?.unregisterShortcut(UserDefaultsManagement.activateShortcut)
+            monitor.unregisterShortcut(UserDefaultsManagement.activateShortcut)
             
             if ((self.activateShortcut.shortcutValue) != nil) {
                 let keyCode = self.activateShortcut.shortcutValue.keyCode
                 let modifierFlags = self.activateShortcut.shortcutValue.modifierFlags
 
-                UserDefaultsManagement.activateShortcut = MASShortcut(keyCode: keyCode, modifierFlags: modifierFlags)
+                UserDefaultsManagement.activateShortcut = GlobalShortcut(keyCode: keyCode, modifierFlags: modifierFlags)
 
-                MASShortcutMonitor.shared().register(self.activateShortcut.shortcutValue, withAction: {
+                GlobalShortcutMonitor.shared().register(self.activateShortcut.shortcutValue, withAction: {
                     vc.searchShortcut(activate: true)
                 })
             } else {

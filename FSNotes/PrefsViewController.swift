@@ -7,7 +7,6 @@
 //
 
 import Cocoa
-import MASShortcut
 import CoreData
 
 class PrefsViewController: NSTabViewController  {

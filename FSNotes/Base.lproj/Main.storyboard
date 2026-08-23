@@ -905,14 +905,14 @@ CA
                         <rect key="frame" x="0.0" y="0.0" width="468" height="572"/>
                         <autoresizingMask key="autoresizingMask"/>
                         <subviews>
-                            <customView translatesAutoresizingMaskIntoConstraints="NO" id="rjd-D6-Jj2" customClass="MASShortcutView">
+                            <customView translatesAutoresizingMaskIntoConstraints="NO" id="rjd-D6-Jj2" customClass="ShortcutRecorderView">
                                 <rect key="frame" x="255" y="104" width="178" height="25"/>
                                 <constraints>
                                     <constraint firstAttribute="height" constant="25" id="Cvw-f5-Zb0"/>
                                     <constraint firstAttribute="width" constant="178" id="wsm-9W-2qC"/>
                                 </constraints>
                             </customView>
-                            <customView translatesAutoresizingMaskIntoConstraints="NO" id="XYa-Po-O09" customClass="MASShortcutView">
+                            <customView translatesAutoresizingMaskIntoConstraints="NO" id="XYa-Po-O09" customClass="ShortcutRecorderView">
                                 <rect key="frame" x="35" y="104" width="169" height="25"/>
                                 <constraints>
                                     <constraint firstAttribute="width" constant="169" id="If5-ek-85k"/>
@@ -1096,7 +1096,7 @@ CA
                                     <color key="backgroundColor" name="textBackgroundColor" catalog="System" colorSpace="catalog"/>
                                 </textFieldCell>
                             </textField>
-                            <customView translatesAutoresizingMaskIntoConstraints="NO" id="B3F-c9-AP8" customClass="MASShortcutView">
+                            <customView translatesAutoresizingMaskIntoConstraints="NO" id="B3F-c9-AP8" customClass="ShortcutRecorderView">
                                 <rect key="frame" x="35" y="35" width="169" height="25"/>
                                 <constraints>
                                     <constraint firstAttribute="height" constant="25" id="s6k-MV-VCi"/>
@@ -1150,7 +1150,7 @@ CA
                                     <color key="backgroundColor" name="textBackgroundColor" catalog="System" colorSpace="catalog"/>
                                 </textFieldCell>
                             </textField>
-                            <customView translatesAutoresizingMaskIntoConstraints="NO" id="b4Q-10-yq8" customClass="MASShortcutView">
+                            <customView translatesAutoresizingMaskIntoConstraints="NO" id="b4Q-10-yq8" customClass="ShortcutRecorderView">
                                 <rect key="frame" x="255" y="35" width="178" height="25"/>
                                 <constraints>
                                     <constraint firstAttribute="width" constant="178" id="0RV-2z-TtT"/>

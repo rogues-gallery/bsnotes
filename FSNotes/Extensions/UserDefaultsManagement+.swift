@@ -7,7 +7,6 @@
 //
 
 import Foundation
-import MASShortcut
 import AppKit
 
 extension UserDefaultsManagement {
@@ -41,7 +40,7 @@ extension UserDefaultsManagement {
         }
     }
 
-    static var newNoteShortcut: MASShortcut? {
+    static var newNoteShortcut: GlobalShortcut? {
         get {
             let code = UserDefaults.standard.object(forKey: Constants.NewNoteKeyCode)
             let modifier = UserDefaults.standard.object(forKey: Constants.NewNoteKeyModifier)
@@ -52,10 +51,10 @@ extension UserDefaultsManagement {
                     return nil
                 }
 
-                return MASShortcut(keyCode: keyCode, modifierFlags: modifierFlags)
+                return GlobalShortcut(keyCode: keyCode, modifierFlags: modifierFlags)
             }
 
-            return MASShortcut(keyCode: 45, modifierFlags: 917504)
+            return GlobalShortcut(keyCode: 45, modifierFlags: 917504)
         }
         set {
             let code = newValue?.keyCode ?? 0
@@ -66,7 +65,7 @@ extension UserDefaultsManagement {
         }
     }
 
-    static var quickNoteShortcut: MASShortcut? {
+    static var quickNoteShortcut: GlobalShortcut? {
         get {
             let code = UserDefaults.standard.object(forKey: Constants.QuickNoteKey)
             let modifier = UserDefaults.standard.object(forKey: Constants.QuickNoteKeyModifier)
@@ -77,10 +76,10 @@ extension UserDefaultsManagement {
                     return nil
                 }
 
-                return MASShortcut(keyCode: keyCode, modifierFlags: modifierFlags)
+                return GlobalShortcut(keyCode: keyCode, modifierFlags: modifierFlags)
             }
 
-            return MASShortcut(keyCode: 31, modifierFlags: 917504)
+            return GlobalShortcut(keyCode: 31, modifierFlags: 917504)
         }
         set {
             let code = newValue?.keyCode ?? 0
@@ -91,7 +90,7 @@ extension UserDefaultsManagement {
         }
     }
 
-    static var searchNoteShortcut: MASShortcut? {
+    static var searchNoteShortcut: GlobalShortcut? {
         get {
             let code = UserDefaults.standard.object(forKey: Constants.SearchNoteKeyCode)
             let modifier = UserDefaults.standard.object(forKey: Constants.SearchNoteKeyModifier)
@@ -102,10 +101,10 @@ extension UserDefaultsManagement {
                     return nil
                 }
 
-                return MASShortcut(keyCode: keyCode, modifierFlags: modifierFlags)
+                return GlobalShortcut(keyCode: keyCode, modifierFlags: modifierFlags)
             }
 
-            return MASShortcut(keyCode: 37, modifierFlags: 917504)
+            return GlobalShortcut(keyCode: 37, modifierFlags: 917504)
         }
         set {
             let code = newValue?.keyCode ?? 0
@@ -116,7 +115,7 @@ extension UserDefaultsManagement {
         }
     }
     
-    static var activateShortcut: MASShortcut? {
+    static var activateShortcut: GlobalShortcut? {
         get {
             let code = UserDefaults.standard.object(forKey: Constants.ActivateKeyCode)
             let modifier = UserDefaults.standard.object(forKey: Constants.ActivateKeyModifier)
@@ -127,10 +126,10 @@ extension UserDefaultsManagement {
                     return nil
                 }
 
-                return MASShortcut(keyCode: keyCode, modifierFlags: modifierFlags)
+                return GlobalShortcut(keyCode: keyCode, modifierFlags: modifierFlags)
             }
 
-            return MASShortcut(keyCode: 40, modifierFlags: 917504)
+            return GlobalShortcut(keyCode: 40, modifierFlags: 917504)
         }
         set {
             let code = newValue?.keyCode ?? 0

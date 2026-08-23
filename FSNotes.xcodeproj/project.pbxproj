@@ -222,6 +222,8 @@
 		8F7136F023490CBF004DFA6E /* Markdown.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F7136ED23490CBF004DFA6E /* Markdown.swift */; };
 		A0781CA02F6737B100918C07 /* SFTPViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0781C9F2F6737B100918C07 /* SFTPViewController.swift */; };
 		A0781CA22F6737D100918C07 /* SFTPUploader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0781CA12F6737D100918C07 /* SFTPUploader.swift */; };
+		A1B2C3D42F56789000112233 /* GlobalShortcut.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D32F56789000112233 /* GlobalShortcut.swift */; };
+		A1B2C3D52F56789000112233 /* GlobalShortcut.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D32F56789000112233 /* GlobalShortcut.swift */; };
 		BE957A4A1B908EC91BECB3D3 /* Pods_FSNotes__iCloud_.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 6066605B9BAF43A4BF3B60C1 /* Pods_FSNotes__iCloud_.framework */; };
 		CE3427A778205E1713A014B9 /* Pods_FSNotes_iOS.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 85B72F46887638CA9CC70D39 /* Pods_FSNotes_iOS.framework */; };
 		D4DB932C9F51CAE71393A28B /* Pods_FSNotes.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F616385FF783029192B97DF6 /* Pods_FSNotes.framework */; };
@@ -1016,6 +1018,7 @@
 		A0781C9F2F6737B100918C07 /* SFTPViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SFTPViewController.swift; sourceTree = "<group>"; };
 		A0781CA12F6737D100918C07 /* SFTPUploader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SFTPUploader.swift; sourceTree = "<group>"; };
 		A0C1E679E6D0B408CAC6372D /* Pods-FSNotesCore macOS.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-FSNotesCore macOS.release.xcconfig"; path = "Target Support Files/Pods-FSNotesCore macOS/Pods-FSNotesCore macOS.release.xcconfig"; sourceTree = "<group>"; };
+		A1B2C3D32F56789000112233 /* GlobalShortcut.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlobalShortcut.swift; sourceTree = "<group>"; };
 		B3A8E91DD978BBA557F778F9 /* Pods_FSNotesCore_macOS.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_FSNotesCore_macOS.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		C1E2B9BF60C418804784CC3B /* Pods-FSNotes (Notarized).release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-FSNotes (Notarized).release.xcconfig"; path = "Target Support Files/Pods-FSNotes (Notarized)/Pods-FSNotes (Notarized).release.xcconfig"; sourceTree = "<group>"; };
 		C8E92DD65B370BD263427B83 /* Pods-FSNotes (iCloud Documents).release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-FSNotes (iCloud Documents).release.xcconfig"; path = "Target Support Files/Pods-FSNotes (iCloud Documents)/Pods-FSNotes (iCloud Documents).release.xcconfig"; sourceTree = "<group>"; };
@@ -1155,7 +1158,6 @@
 		D771E96E28EDFBF600CD4871 /* Errors.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Errors.swift; sourceTree = "<group>"; };
 		D772C8832217362C007E440B /* ViewController+Print.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ViewController+Print.swift"; sourceTree = "<group>"; };
 		D773DE7F1F36F45900A39C9F /* SandboxBookmark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SandboxBookmark.swift; sourceTree = "<group>"; };
-		D77671B71FACEDDE00DDF28D /* MASShortcut.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; path = MASShortcut.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		D777D7802009115C00D86B33 /* ImagesProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImagesProcessor.swift; sourceTree = "<group>"; };
 		D7793C6F1F211C6000CA39B7 /* FSNotes.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FSNotes.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		D7793C721F211C6000CA39B7 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
@@ -1499,7 +1501,6 @@
 			isa = PBXGroup;
 			children = (
 				D7ADFD102066CF9400B531F9 /* CoreLocation.framework */,
-				D77671B71FACEDDE00DDF28D /* MASShortcut.framework */,
 				D74922111FACE9B100C45108 /* Down.framework */,
 				D72E05861F5220D300977D02 /* Down.framework */,
 				F616385FF783029192B97DF6 /* Pods_FSNotes.framework */,
@@ -1910,6 +1911,7 @@
 		D7E6D9D520808652003ECAFC /* Helpers */ = {
 			isa = PBXGroup;
 			children = (
+				A1B2C3D32F56789000112233 /* GlobalShortcut.swift */,
 				D7DD5A871F88D4EA00CE947E /* FileWatcher.swift */,
 				D7DD5A891F88D50000CE947E /* FileWatcherEvent.swift */,
 				D7170C1C20F8565B001DDB36 /* FileSystemEventManager.swift */,
@@ -2390,14 +2392,12 @@
 			);
 			inputPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-FSNotes/Pods-FSNotes-frameworks.sh",
-				"${BUILT_PRODUCTS_DIR}/MASShortcut/MASShortcut.framework",
 				"${BUILT_PRODUCTS_DIR}/RNCryptor-macOS/RNCryptor.framework",
 				"${BUILT_PRODUCTS_DIR}/SSZipArchive-macOS/SSZipArchive.framework",
 				"${BUILT_PRODUCTS_DIR}/libcmark_gfm-macOS/libcmark_gfm.framework",
 			);
 			name = "[CP] Embed Pods Frameworks";
 			outputPaths = (
-				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/MASShortcut.framework",
 				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/RNCryptor.framework",
 				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/SSZipArchive.framework",
 				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/libcmark_gfm.framework",
@@ -2436,14 +2436,12 @@
 			);
 			inputPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-FSNotes (iCloud)/Pods-FSNotes (iCloud)-frameworks.sh",
-				"${BUILT_PRODUCTS_DIR}/MASShortcut/MASShortcut.framework",
 				"${BUILT_PRODUCTS_DIR}/RNCryptor-macOS/RNCryptor.framework",
 				"${BUILT_PRODUCTS_DIR}/SSZipArchive-macOS/SSZipArchive.framework",
 				"${BUILT_PRODUCTS_DIR}/libcmark_gfm-macOS/libcmark_gfm.framework",
 			);
 			name = "[CP] Embed Pods Frameworks";
 			outputPaths = (
-				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/MASShortcut.framework",
 				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/RNCryptor.framework",
 				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/SSZipArchive.framework",
 				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/libcmark_gfm.framework",
@@ -2823,6 +2821,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A1B2C3D42F56789000112233 /* GlobalShortcut.swift in Sources */,
 				D73BCCAA28EB5EC3008B3BBC /* OID.swift in Sources */,
 				D7D97F3C290437A200C651D4 /* NSWindowController+.swift in Sources */,
 				D7DA9E1E21031901001CF0BE /* OutlineHeaderView.swift in Sources */,
@@ -3058,6 +3057,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A1B2C3D52F56789000112233 /* GlobalShortcut.swift in Sources */,
 				D73BCCAB28EB5EC3008B3BBC /* OID.swift in Sources */,
 				D7D97F3D290437A200C651D4 /* NSWindowController+.swift in Sources */,
 				D7DA9E1F21031901001CF0BE /* OutlineHeaderView.swift in Sources */,

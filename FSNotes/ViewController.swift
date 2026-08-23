@@ -7,7 +7,7 @@
 //
 
 import Cocoa
-import MASShortcut
+import Carbon.HIToolbox
 import Foundation
 import Shout
 import UserNotifications
@@ -458,19 +458,19 @@ class ViewController: EditorViewController,
     }
 
     private func configureShortcuts() {
-        MASShortcutMonitor.shared().register(UserDefaultsManagement.newNoteShortcut, withAction: {
+        GlobalShortcutMonitor.shared().register(UserDefaultsManagement.newNoteShortcut, withAction: {
             self.makeNoteShortcut()
         })
         
-        MASShortcutMonitor.shared().register(UserDefaultsManagement.searchNoteShortcut, withAction: {
+        GlobalShortcutMonitor.shared().register(UserDefaultsManagement.searchNoteShortcut, withAction: {
             self.searchShortcut()
         })
         
-        MASShortcutMonitor.shared().register(UserDefaultsManagement.quickNoteShortcut, withAction: {
+        GlobalShortcutMonitor.shared().register(UserDefaultsManagement.quickNoteShortcut, withAction: {
             self.quickNote(self)
         })
         
-        MASShortcutMonitor.shared().register(UserDefaultsManagement.activateShortcut, withAction: {
+        GlobalShortcutMonitor.shared().register(UserDefaultsManagement.activateShortcut, withAction: {
             self.searchShortcut(activate: true)
         })
         

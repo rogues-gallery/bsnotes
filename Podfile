@@ -3,10 +3,6 @@ use_frameworks!
 MAC_TARGET_VERSION = '10.14'
 IOS_TARGET_VERSION = '14'
 
-def mac_pods
-    pod 'MASShortcut', :git => 'https://github.com/glushchenko/MASShortcut.git', :branch => 'master'
-end
-
 def ios_pods
     pod 'SSZipArchive', :git => 'https://github.com/glushchenko/ZipArchive.git', :branch => 'master'
     pod 'DropDown', '2.3.13'
@@ -27,14 +23,12 @@ end
 target 'FSNotes' do
     platform :osx, MAC_TARGET_VERSION
 
-    mac_pods
     common_pods
 end
 
 target 'FSNotes (iCloud)' do
     platform :osx, MAC_TARGET_VERSION
 
-    mac_pods
     common_pods
 end
 
@@ -69,7 +63,6 @@ post_install do |installer|
     end
 
     if target.name == 'libcmark_gfm-macOS' ||
-      target.name == 'MASShortcut' ||
       target.name == 'SSZipArchive-macOS' ||
       target.name == 'RNCryptor-macOS'
 
