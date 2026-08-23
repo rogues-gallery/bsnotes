@@ -18,7 +18,6 @@ def common_pods
     pod 'libcmark_gfm', :git => 'https://github.com/glushchenko/libcmark_gfm', :branch => 'master' 
     pod 'RNCryptor', '~> 5.1.0'
     pod 'SSZipArchive', :git => 'https://github.com/glushchenko/ZipArchive.git', :branch => 'master'
-    pod 'Punycode'
 end
 
 def framework_pods

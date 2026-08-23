@@ -580,9 +580,6 @@
 		D792DD8527A6C980006ADC01 /* FSParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = D792DD8127A6C980006ADC01 /* FSParser.swift */; };
 		D792DD8627A6C980006ADC01 /* FSParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = D792DD8127A6C980006ADC01 /* FSParser.swift */; };
 		D792DD9427A6D6F5006ADC01 /* String+.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F13BB2920FEDE230005E120 /* String+.swift */; };
-		D792DD9627A6D71C006ADC01 /* String+Punycode.swift in Sources */ = {isa = PBXBuildFile; fileRef = D792DD9527A6D71C006ADC01 /* String+Punycode.swift */; };
-		D792DD9727A6D71C006ADC01 /* String+Punycode.swift in Sources */ = {isa = PBXBuildFile; fileRef = D792DD9527A6D71C006ADC01 /* String+Punycode.swift */; };
-		D792DD9927A6D71C006ADC01 /* String+Punycode.swift in Sources */ = {isa = PBXBuildFile; fileRef = D792DD9527A6D71C006ADC01 /* String+Punycode.swift */; };
 		D794558E27C05743000C283F /* ProViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D794558D27C05743000C283F /* ProViewController.swift */; };
 		D794559A27C1B3F9000C283F /* ExternalViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D794559927C1B3F9000C283F /* ExternalViewController.swift */; };
 		D7958A3922ED512D00EDBDDC /* SandboxBookmark.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7958A3822ED512D00EDBDDC /* SandboxBookmark.swift */; };
@@ -1183,7 +1180,6 @@
 		D78D20D41F934C05006DBBC3 /* FSNotes (CloudKit).entitlements */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.entitlements; path = "FSNotes (CloudKit).entitlements"; sourceTree = "<group>"; };
 		D792297421A845B4005F468F /* ProjectSettingsViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectSettingsViewController.swift; sourceTree = "<group>"; };
 		D792DD8127A6C980006ADC01 /* FSParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FSParser.swift; sourceTree = "<group>"; };
-		D792DD9527A6D71C006ADC01 /* String+Punycode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "String+Punycode.swift"; sourceTree = "<group>"; };
 		D794558D27C05743000C283F /* ProViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProViewController.swift; sourceTree = "<group>"; };
 		D794559927C1B3F9000C283F /* ExternalViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExternalViewController.swift; sourceTree = "<group>"; };
 		D7958A3822ED512D00EDBDDC /* SandboxBookmark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SandboxBookmark.swift; sourceTree = "<group>"; };
@@ -1492,7 +1488,6 @@
 				D768D754245E854D0028F344 /* NSAttributedString+.swift */,
 				D796EB40251E127300CE5C80 /* Pasteboard.swift */,
 				D7680FB125D02B2C00810DA8 /* FileManager+.swift */,
-				D792DD9527A6D71C006ADC01 /* String+Punycode.swift */,
 				D77AD7FB27F9D1C90077BD45 /* Data+.swift */,
 				D7A9C1D52910784400905619 /* Project+Git.swift */,
 				D7BB2DFD29A0157700D5055A /* Storage+Git.swift */,
@@ -2396,7 +2391,6 @@
 			inputPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-FSNotes/Pods-FSNotes-frameworks.sh",
 				"${BUILT_PRODUCTS_DIR}/MASShortcut/MASShortcut.framework",
-				"${BUILT_PRODUCTS_DIR}/Punycode-macOS/Punycode.framework",
 				"${BUILT_PRODUCTS_DIR}/RNCryptor-macOS/RNCryptor.framework",
 				"${BUILT_PRODUCTS_DIR}/SSZipArchive-macOS/SSZipArchive.framework",
 				"${BUILT_PRODUCTS_DIR}/libcmark_gfm-macOS/libcmark_gfm.framework",
@@ -2404,7 +2398,6 @@
 			name = "[CP] Embed Pods Frameworks";
 			outputPaths = (
 				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/MASShortcut.framework",
-				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/Punycode.framework",
 				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/RNCryptor.framework",
 				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/SSZipArchive.framework",
 				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/libcmark_gfm.framework",
@@ -2444,7 +2437,6 @@
 			inputPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-FSNotes (iCloud)/Pods-FSNotes (iCloud)-frameworks.sh",
 				"${BUILT_PRODUCTS_DIR}/MASShortcut/MASShortcut.framework",
-				"${BUILT_PRODUCTS_DIR}/Punycode-macOS/Punycode.framework",
 				"${BUILT_PRODUCTS_DIR}/RNCryptor-macOS/RNCryptor.framework",
 				"${BUILT_PRODUCTS_DIR}/SSZipArchive-macOS/SSZipArchive.framework",
 				"${BUILT_PRODUCTS_DIR}/libcmark_gfm-macOS/libcmark_gfm.framework",
@@ -2452,7 +2444,6 @@
 			name = "[CP] Embed Pods Frameworks";
 			outputPaths = (
 				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/MASShortcut.framework",
-				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/Punycode.framework",
 				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/RNCryptor.framework",
 				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/SSZipArchive.framework",
 				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/libcmark_gfm.framework",
@@ -2469,7 +2460,6 @@
 			);
 			inputPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-FSNotes iOS/Pods-FSNotes iOS-frameworks.sh",
-				"${BUILT_PRODUCTS_DIR}/Punycode-iOS/Punycode.framework",
 				"${BUILT_PRODUCTS_DIR}/RNCryptor-iOS/RNCryptor.framework",
 				"${BUILT_PRODUCTS_DIR}/SSZipArchive-iOS/SSZipArchive.framework",
 				"${BUILT_PRODUCTS_DIR}/libcmark_gfm-iOS/libcmark_gfm.framework",
@@ -2479,7 +2469,6 @@
 			);
 			name = "[CP] Embed Pods Frameworks";
 			outputPaths = (
-				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/Punycode.framework",
 				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/RNCryptor.framework",
 				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/SSZipArchive.framework",
 				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/libcmark_gfm.framework",
@@ -2747,7 +2736,6 @@
 				D78115672153D4D9004FA1CA /* ProjectsViewController.swift in Sources */,
 				D7BDFE60201F677B00897A58 /* NoteType.swift in Sources */,
 				D787740A2FD41C5D00CF33BD /* Json.swift in Sources */,
-				D792DD9927A6D71C006ADC01 /* String+Punycode.swift in Sources */,
 				D709C9E229AFD9E0006EF9A8 /* GitTableViewCell.swift in Sources */,
 				11D6C0D32EE227F9006017F0 /* Java.swift in Sources */,
 				D70E9E032901AEBF00A3C634 /* Head+Checkout.swift in Sources */,
@@ -3063,7 +3051,6 @@
 				11D6C0F92EE22D78006017F0 /* Vb.swift in Sources */,
 				D79798A229C0FE6A00B9A878 /* SettingsViewController.swift in Sources */,
 				D79651B12517741400333AD4 /* ProgressState.swift in Sources */,
-				D792DD9627A6D71C006ADC01 /* String+Punycode.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -3299,7 +3286,6 @@
 				11D6C0F72EE22D78006017F0 /* Vb.swift in Sources */,
 				D79798A329C0FE6A00B9A878 /* SettingsViewController.swift in Sources */,
 				D79651B22517741400333AD4 /* ProgressState.swift in Sources */,
-				D792DD9727A6D71C006ADC01 /* String+Punycode.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -3692,7 +3678,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 716;
+				CURRENT_PROJECT_VERSION = 717;
 				DEVELOPMENT_TEAM = 866P6MTE92;
 				EMBED_ASSET_PACKS_IN_PRODUCT_BUNDLE = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -3709,7 +3695,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 12.4;
-				MARKETING_VERSION = 7.3.2;
+				MARKETING_VERSION = 7.3.3;
 				OTHER_SWIFT_FLAGS = "$(inherited)";
 				PRODUCT_BUNDLE_IDENTIFIER = co.fluder.FSNotes;
 				PRODUCT_NAME = FSNotes;
@@ -3732,7 +3718,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 716;
+				CURRENT_PROJECT_VERSION = 717;
 				DEPLOYMENT_LOCATION = NO;
 				DEVELOPMENT_TEAM = 866P6MTE92;
 				EMBED_ASSET_PACKS_IN_PRODUCT_BUNDLE = YES;
@@ -3750,7 +3736,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 12.4;
-				MARKETING_VERSION = 7.3.2;
+				MARKETING_VERSION = 7.3.3;
 				ONLY_ACTIVE_ARCH = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = co.fluder.FSNotes;
 				PRODUCT_NAME = FSNotes;
